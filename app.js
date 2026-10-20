@@ -8,7 +8,8 @@
 // ------------------------------------------------------------ utilità
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const PERSONE = ['Ricardo', 'Silvana'];
+const persone = () => (S && Array.isArray(S.persone) && S.persone.length ? S.persone : ['Ricardo', 'Silvana']);   // 1 o 2 nominativi
+const pColor = n => (persone().indexOf(n) === 1 ? 'var(--silvana)' : 'var(--ricardo)');
 const MESI = ['GENNAIO', 'FEBBRAIO', 'MARZO', 'APRILE', 'MAGGIO', 'GIUGNO', 'LUGLIO', 'AGOSTO', 'SETTEMBRE', 'OTTOBRE', 'NOVEMBRE', 'DICEMBRE'];
 const MESI_IT = MESI.map(m => m[0] + m.slice(1).toLowerCase());
 const MESI_BREVI = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
@@ -49,7 +50,7 @@ const seedRecurring = () => [
   { id: 'seed-5', u: 0, persona: 'Silvana', voce: 'ASS. ALLEANZA', importo: 43, tipo: 'FISSO', giorno: 20, da: '2026-08', a: '' },
   { id: 'seed-6', u: 0, persona: 'Silvana', voce: 'TELEFONO', importo: 7, tipo: 'FISSO', giorno: 0, da: '2026-08', a: '' },
 ];
-const defaults = () => ({ v: 1, expenses: [], del: {}, recurring: seedRecurring(), voci: [...DEFAULT_VOCI], tipoPerVoce: { ...DEFAULT_TIPO }, settings: { persona: 'Ricardo', periodo: '' } });
+const defaults = () => ({ v: 1, expenses: [], del: {}, persone: ['Ricardo', 'Silvana'], personeU: 0, rinomine: {}, recurring: seedRecurring(), voci: [...DEFAULT_VOCI], tipoPerVoce: { ...DEFAULT_TIPO }, settings: { persona: 'Ricardo', periodo: '' } });
 let S = (() => {
   try { const j = JSON.parse(localStorage.getItem(LS_KEY)); if (j && Array.isArray(j.expenses)) return Object.assign(defaults(), j); } catch (e) { /* nessun dato salvato */ }
   return defaults();
@@ -194,7 +195,7 @@ async function sha1(file) {
 let queue = [], form = null, thumbURL = null;
 const sheet = $('#sheet');
 function newForm(over = {}) {
-  return Object.assign({ id: null, importo: '', d: todayISO(), persona: S.settings.persona || 'Ricardo', voce: '', tipo: 'IMPORTO', nota: '', dirty: {}, src: null, hash: null, dup: false, status: '', ocr: null, raw: '' }, over);
+  return Object.assign({ id: null, importo: '', d: todayISO(), persona: persone().includes(S.settings.persona) ? S.settings.persona : persone()[0], voce: '', tipo: 'IMPORTO', nota: '', dirty: {}, src: null, hash: null, dup: false, status: '', ocr: null, raw: '' }, over);
 }
 function openForm(f) { form = f; renderSheet(); sheet.hidden = false; }
 function closeForm() {
@@ -220,7 +221,7 @@ function renderSheet() {
     <div class="stub">
       <div class="amount"><span>€</span><input id="fImp" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Importo in euro" value="${esc(f.importo)}"></div>
       <label class="row"><span>Data</span><input type="date" id="fData" value="${esc(f.d)}"></label>
-      <div class="row"><span>Chi</span><div class="seg">${PERSONE.map(p => `<button type="button" data-act="persona" data-p="${p}" aria-pressed="${f.persona === p}">${p}</button>`).join('')}</div></div>
+      ${persone().length > 1 ? `<div class="row"><span>Chi</span><div class="seg">${persone().map((p, i) => `<button type="button" class="p${i}" data-act="persona" data-p="${esc(p)}" aria-pressed="${f.persona === p}">${esc(p)}</button>`).join('')}</div></div>` : ''}
       <div class="row col"><span>Voce</span>
         <div class="chips">${voci.map(v => `<button type="button" class="chip" data-act="voce" data-v="${esc(v)}" aria-pressed="${f.voce === v}">${esc(v)}</button>`).join('')}</div>
         <input id="fVoce" list="dlVoci" placeholder="Altra voce (es. AMAZON, DECATHLON)" value="${inChips ? '' : esc(f.voce)}" autocomplete="off"></div>
@@ -278,7 +279,7 @@ function salvaForm() {
   const voce = norm(f.voce);
   if (!voce) { toast('Scegli una voce (SPESA, BAR, FARMACIA…)'); return; }
   if (f.dup && !f.id && !confirm('Questo scontrino è già stato salvato. Salvarlo di nuovo?')) return;
-  const rec = { id: f.id || uid(), d, persona: f.persona, voce, tipo: f.tipo, importo, nota: f.nota.trim(), hash: f.hash || undefined, nd: false, u: Date.now() };
+  const rec = { id: f.id || uid(), d, persona: persone().includes(f.persona) ? f.persona : persone()[0], voce, tipo: f.tipo, importo, nota: f.nota.trim(), hash: f.hash || undefined, nd: false, u: Date.now() };
   if (f.id) { const i = S.expenses.findIndex(e => e.id === f.id); if (i >= 0) { rec.hash = S.expenses[i].hash; S.expenses[i] = rec; } }
   else S.expenses.push(rec);
   S.tipoPerVoce[voce] = f.tipo; S.settings.persona = f.persona;
@@ -314,20 +315,21 @@ function viewScan() {
 }
 function itemHTML(e) {
   const dd = `${+e.d.slice(8)} ${MESI_BREVI[+e.d.slice(5, 7) - 1]}`;
-  return `<button class="item" data-act="edit" data-id="${e.id}"><span class="dot" style="background:var(--${e.persona.toLowerCase()})" title="${e.persona}"></span>
+  return `<button class="item" data-act="edit" data-id="${e.id}"><span class="dot" style="background:${pColor(e.persona)}" title="${esc(e.persona)}"></span>
     <span class="t">${esc(e.voce)}${e.tipo !== 'IMPORTO' ? `<span class="tag">${TIPI[e.tipo]}</span>` : ''}</span>
     <span class="s">${e.nd ? labelMese(ymOf(e.d)) : dd} · ${e.persona}${e.nota ? ' · ' + esc(e.nota) : ''}</span><span class="a">${eur(e.importo)}</span></button>`;
 }
 function viewList() {
   const mesi = mesiConDati();
   const sel = ui.mesePick;
+  if (ui.persona && !persone().includes(ui.persona)) ui.persona = '';
   let arr = S.expenses.filter(e => (!sel || ymOf(e.d) === sel) && (!ui.persona || e.persona === ui.persona));
   arr.sort((a, b) => (b.d + b.id > a.d + a.id ? 1 : -1));
   const groups = new Map(); arr.forEach(e => { const k = ymOf(e.d); (groups.get(k) || groups.set(k, []).get(k)).push(e); });
   return `<div class="filters">
-      <select class="sel" id="selMese" aria-label="Mese" style="flex:1"><option value="">Tutti i mesi</option>${mesi.map(m => `<option value="${m}" ${m === sel ? 'selected' : ''}>${labelMese(m)}</option>`).join('')}</select>
+      <select class="sel" id="selMese" aria-label="Mese" style="flex:1"><option value="">Tutti i mesi</option>${mesi.map(m => `<option value="${m}" ${m === sel ? 'selected' : ''}>${labelMese(m)}</option>`).join('')}</select><button class="btn small" data-act="nomi">Nominativi</button>
     </div>
-    <div class="filters">${['', ...PERSONE].map(p => `<button class="chip" data-act="fPersona" data-p="${p}" aria-pressed="${ui.persona === p}">${p || 'Tutti'}</button>`).join('')}
+    <div class="filters">${persone().length > 1 ? ['', ...persone()].map(p => `<button class="chip" data-act="fPersona" data-p="${esc(p)}" aria-pressed="${ui.persona === p}">${esc(p) || 'Tutti'}</button>`).join('') : ''}
       <span style="flex:1"></span><button class="btn small" data-act="manuale">+ Aggiungi</button></div>
     ${arr.length ? [...groups.entries()].map(([k, list]) => `<div class="month-h"><span>${labelMese(k)}</span><span>${eur(sumBy(list, e => e.importo))}</span></div><div>${list.map(itemHTML).join('')}</div>`).join('') : '<div class="card empty">Nessuna spesa con questi filtri.</div>'}`;
 }
@@ -336,7 +338,7 @@ function viewList() {
 function seriesMensili(endYM, n = 12) {
   const out = []; let y = +endYM.slice(0, 4), m = +endYM.slice(5);
   for (let i = 0; i < n; i++) { out.unshift(`${y}-${pad(m)}`); m--; if (m === 0) { m = 12; y--; } }
-  return out.map(ym => { const l = speseDelMese(ym); return { ym, R: sumBy(l.filter(e => e.persona === 'Ricardo'), e => e.importo), S: sumBy(l.filter(e => e.persona === 'Silvana'), e => e.importo) }; });
+  return out.map(ym => { const l = speseDelMese(ym); return { ym, R: sumBy(l.filter(e => e.persona === persone()[0]), e => e.importo), S: persone()[1] ? sumBy(l.filter(e => e.persona === persone()[1]), e => e.importo) : 0 }; });
 }
 const niceMax = v => { if (v <= 0) return 100; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; };
 function stackedSVG(serie, selYM) {
@@ -354,11 +356,11 @@ function stackedSVG(serie, selYM) {
   });
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Spese degli ultimi 12 mesi, per persona"><line class="axis" x1="${L}" x2="${W - R}" y1="${T + ih}" y2="${T + ih}"/>${g}</svg>`;
 }
-function readoutHTML(s) { return s ? `<b>${labelMese(s.ym)}</b> · <span class="sw" style="background:var(--ricardo)"></span>Ricardo <b>${eur(s.R)}</b> · <span class="sw" style="background:var(--silvana)"></span>Silvana <b>${eur(s.S)}</b> · totale <b>${eur(s.R + s.S)}</b>` : ''; }
+function readoutHTML(s) { if (!s) return ''; const P = persone(); return `<b>${labelMese(s.ym)}</b> · <span class="sw" style="background:var(--ricardo)"></span>${esc(P[0])} <b>${eur(s.R)}</b>${P[1] ? ` · <span class="sw" style="background:var(--silvana)"></span>${esc(P[1])} <b>${eur(s.S)}</b> · totale <b>${eur(s.R + s.S)}</b>` : ''}`; }
 function viewChart() {
   const ym = meseCorrente(), mesi = [...new Set([...mesiConDati(), nowYM()])].sort().reverse();
   const l = speseDelMese(ym), tot = sumBy(l, e => e.importo);
-  const R = sumBy(l.filter(e => e.persona === 'Ricardo'), e => e.importo), Sv = sumBy(l.filter(e => e.persona === 'Silvana'), e => e.importo);
+  const P = persone(), R = sumBy(l.filter(e => e.persona === P[0]), e => e.importo), Sv = P[1] ? sumBy(l.filter(e => e.persona === P[1]), e => e.importo) : 0;
   const per = new Map(); l.forEach(e => per.set(e.voce, (per.get(e.voce) || 0) + e.importo));
   let voci = [...per.entries()].sort((a, b) => b[1] - a[1]);
   if (voci.length > 8) { const rest = voci.slice(7).reduce((a, v) => a + v[1], 0); voci = [...voci.slice(0, 7), ['ALTRE', rest]]; }
@@ -366,12 +368,12 @@ function viewChart() {
   const ex = sumBy(l.filter(e => e.tipo === 'EXTRA'), e => e.importo), fx = sumBy(l.filter(e => e.tipo === 'FISSO'), e => e.importo);
   return `<div class="filters"><select class="sel" id="selMeseG" aria-label="Mese">${mesi.map(m => `<option value="${m}" ${m === ym ? 'selected' : ''}>${labelMese(m)}</option>`).join('')}</select></div>
     <section class="card"><div class="kpi"><div><div class="lbl">Spesa del mese</div><div class="big">${eur(tot)}</div></div></div>
-      <div class="pp"><span><span class="sw" style="background:var(--ricardo)"></span>Ricardo <b>${eur(R)}</b></span><span><span class="sw" style="background:var(--silvana)"></span>Silvana <b>${eur(Sv)}</b></span></div>
+      <div class="pp"><span><span class="sw" style="background:var(--ricardo)"></span>${esc(P[0])} <b>${eur(R)}</b></span>${P[1] ? `<span><span class="sw" style="background:var(--silvana)"></span>${esc(P[1])} <b>${eur(Sv)}</b></span>` : ''}</div>
       <div class="pp hint"><span>Fisse <b>${eur(fx)}</b></span><span>Extra <b>${eur(ex)}</b></span><span>Ordinarie <b>${eur(round2(tot - ex - fx))}</b></span></div></section>
     <section class="card"><h2>Dove vanno i soldi</h2>
       ${voci.length ? `<div class="bars">${voci.map(([n, v]) => `<div class="bar"><span class="n" title="${esc(n)}">${esc(n)}</span><span class="tr"><i style="width:${Math.max(3, v / mx * 100)}%"></i></span><span class="v">${eur(v)}</span></div>`).join('')}</div>` : '<p>Nessuna spesa in questo mese.</p>'}</section>
     <section class="card"><h2>Ultimi 12 mesi</h2>
-      <div class="legend"><span><span class="sw" style="background:var(--ricardo)"></span>Ricardo</span><span><span class="sw" style="background:var(--silvana)"></span>Silvana</span></div>
+      <div class="legend"><span><span class="sw" style="background:var(--ricardo)"></span>${esc(P[0])}</span>${P[1] ? `<span><span class="sw" style="background:var(--silvana)"></span>${esc(P[1])}</span>` : ''}</div>
       ${stackedSVG(serie, selS?.ym)}<div class="readout" id="readout">${readoutHTML(selS)}</div></section>`;
 }
 
@@ -386,7 +388,7 @@ const periodoCorrente = () => /^1-\d{4}$/.test(S.settings.periodo || '') ? S.set
 function viewExcel() {
   const po = periodOptions(), pc = periodoCorrente();
   return `<section class="card"><h2>Excel FAMILIARE</h2>
-      <p>Un foglio per mese, Ricardo a sinistra e Silvana a destra, come il tuo file. Le spese fisse si aggiungono da sole.</p>
+      <p>Un foglio per mese${persone().length > 1 ? `, ${esc(persone()[0])} a sinistra e ${esc(persone()[1])} a destra` : ''}, come il tuo file. Le spese fisse si aggiungono da sole.</p>
       <div class="field"><label for="selPer">Anno</label><select class="sel" id="selPer">${po.map(p => `<option value="${p.v}" ${p.v === pc ? 'selected' : ''}>${p.t}</option>`).join('')}</select></div>
       <div class="stack" style="margin-top:12px">
         <button class="btn primary big" data-act="export" id="btnExp">Crea l'Excel</button>
@@ -416,12 +418,12 @@ function render() {
 
 // ------------------------------------------------------------ editor voci fisse
 function openRec(r) {
-  const x = r || { id: '', persona: 'Ricardo', voce: '', importo: '', tipo: 'FISSO', giorno: '', da: nowYM(), a: '' };
+  const x = r || { id: '', persona: persone()[0], voce: '', importo: '', tipo: 'FISSO', giorno: '', da: nowYM(), a: '' };
   sheet.hidden = false; form = null;
   sheet.innerHTML = `<div class="scrim" data-act="close"></div><section class="panel" role="dialog" aria-modal="true" aria-label="Voce fissa">
     <div class="grab"></div><div class="card" style="box-shadow:none">
     <h2>${r ? 'Modifica voce fissa' : 'Nuova voce fissa'}</h2>
-    <div class="field"><label>Chi</label><select class="sel" id="rPers">${PERSONE.map(p => `<option ${p === x.persona ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
+    <div class="field"><label>Chi</label><select class="sel" id="rPers">${persone().map(p => `<option ${p === x.persona ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
     <div class="field"><label>Voce (come nell'Excel)</label><input class="inp" id="rVoce" value="${esc(x.voce)}" placeholder="es. NETFLIX"></div>
     <div class="field"><label>Importo (€)</label><input class="inp" id="rImp" inputmode="decimal" value="${x.importo === '' ? '' : String(x.importo).replace('.', ',')}"></div>
     <div class="field"><label>Colonna nell'Excel</label><select class="sel" id="rTipo">${Object.entries(TIPI).map(([k, t]) => `<option value="${k}" ${k === x.tipo ? 'selected' : ''}>${t}${k === 'FISSO' ? ' (Importo + Fisso mensile)' : k === 'EXTRA' ? ' (colonna Extra)' : ' (colonna Importo)'}</option>`).join('')}</select></div>
@@ -474,10 +476,10 @@ function buildMonthSheet(wb, m, year, rowsP) {
   const ws = wb.addWorksheet(MESI[m - 1]);
   const widths = [8.43, 10.66, 8.43, 17.55, 8.43, 10.89, 8.43, 11, 14.33, 14.55, 11, 10.66, 8.43, 23.11, 8.43, 10.66, 8.43, 11, 14.33];
   widths.forEach((w, i) => ws.getColumn(i + 1).width = w);
-  const N = Math.max(35, 3 + Math.max(rowsP[0].length, rowsP[1].length));
+  const N = Math.max(35, 3 + Math.max(...rowsP.map(r => r.length)));
   const T = N + 1, TT = N + 7, SM = N + 9;                 // riga totali, riga TOTALE, riga SPESA MENSILE
   const out = { N, T, TT, SM, sums: [] };
-  PERSONE.forEach((p, b) => {
+  persone().forEach((p, b) => {
     const o = b * 10, c = k => colL(k + o);                 // colonne del blocco: A..I | K..S
     ws.mergeCells(`${c(4)}1:${c(6)}1`);
     const t = ws.getCell(`${c(4)}1`); t.value = `SPESE - ${p.toUpperCase()}`; styleCell(t, { fill: b ? COL.arancio : COL.blu, bold: true });
@@ -510,15 +512,15 @@ function buildMonthSheet(wb, m, year, rowsP) {
     out.sums.push({ extra: sF, importo: sH, fisso: sI, totale: round2(sF + sH) });
   });
   const j = ws.getCell(`J${SM}`); j.value = 'SPESA MENSILE'; styleCell(j, { fill: COL.rosa, center: false });
-  const k = ws.getCell(`K${SM}`); k.value = { formula: `SUM(J${SM + 1},H${TT},R${TT})`, result: round2(out.sums[0].totale + out.sums[1].totale) }; styleCell(k, { fill: COL.rosa, fmt: FMT_EUR, center: false });
+  const k = ws.getCell(`K${SM}`); k.value = { formula: out.sums[1] ? `SUM(J${SM + 1},H${TT},R${TT})` : `SUM(J${SM + 1},H${TT})`, result: round2(out.sums[0].totale + (out.sums[1] ? out.sums[1].totale : 0)) }; styleCell(k, { fill: COL.rosa, fmt: FMT_EUR, center: false });
   return out;
 }
 
 // grafici disegnati su canvas e inseriti come immagini nel foglio RIEPILOGO
-function canvasStack(mesi) {
+function canvasStack(mesi, nomi) {
   const W = 760, H = 340, c = document.createElement('canvas'); c.width = W * 2; c.height = H * 2;
   const x = c.getContext('2d'); x.scale(2, 2); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
-  x.fillStyle = '#0f1b24'; x.font = '600 16px sans-serif'; x.fillText('Spese mensili: Ricardo e Silvana', 20, 28);
+  x.fillStyle = '#0f1b24'; x.font = '600 16px sans-serif'; x.fillText('Spese mensili: ' + nomi.join(' e '), 20, 28);
   const L = 56, R = 16, T = 64, B = 34, iw = W - L - R, ih = H - T - B, max = niceMax(Math.max(...mesi.map(s => s.R + s.S), 1)), bw = iw / 12;
   x.font = '12px sans-serif'; x.textAlign = 'right'; x.fillStyle = '#7a8894';
   [0, .5, 1].forEach(f => { const yy = T + ih - ih * f; x.strokeStyle = f ? '#e6ebef' : '#c9d2d9'; x.beginPath(); x.moveTo(L, yy); x.lineTo(W - R, yy); x.stroke(); x.fillText(Math.round(max * f).toLocaleString('it-IT'), L - 8, yy + 4); });
@@ -528,8 +530,8 @@ function canvasStack(mesi) {
     x.fillStyle = '#eb6834'; if (hS > 0) x.fillRect(bx, T + ih - hR - hS, w, Math.max(hS - 1, 0));
     x.fillStyle = '#475662'; x.textAlign = 'center'; x.fillText(s.label, bx + w / 2, H - 12);
   });
-  x.textAlign = 'left'; x.fillStyle = '#2a78d6'; x.fillRect(W - 190, 18, 12, 12); x.fillStyle = '#0f1b24'; x.fillText('Ricardo', W - 172, 29);
-  x.fillStyle = '#eb6834'; x.fillRect(W - 104, 18, 12, 12); x.fillStyle = '#0f1b24'; x.fillText('Silvana', W - 86, 29);
+  x.textAlign = 'left'; x.fillStyle = '#2a78d6'; x.fillRect(W - 190, 18, 12, 12); x.fillStyle = '#0f1b24'; x.fillText(nomi[0], W - 172, 29);
+  if (nomi[1]) { x.fillStyle = '#eb6834'; x.fillRect(W - 104, 18, 12, 12); x.fillStyle = '#0f1b24'; x.fillText(nomi[1], W - 86, 29); }
   return c.toDataURL('image/png');
 }
 function canvasBars(voci, titolo) {
@@ -552,7 +554,7 @@ async function creaWorkbook() {
   wb.calcProperties = { fullCalcOnLoad: true };
   const fogli = [], perVoce = new Map();
   for (let m = 1; m <= 12; m++) {
-    const y = yearOf(m), rowsP = PERSONE.map(p => righeMese(p, y, m));
+    const y = yearOf(m), rowsP = persone().map(p => righeMese(p, y, m));
     rowsP.flat().forEach(r => perVoce.set(norm(r.voce), (perVoce.get(norm(r.voce)) || 0) + r.extra + r.importo));
     fogli.push({ m, y, ...buildMonthSheet(wb, m, y, rowsP) });
   }
@@ -560,21 +562,25 @@ async function creaWorkbook() {
   const ws = wb.addWorksheet('RIEPILOGO');
   [14, 14, 14, 14, 14, 14, 3, 26, 14].forEach((w, i) => ws.getColumn(i + 1).width = w);
   const fine = sm === 1 ? sy : sy + 1, titolo = sm === 1 ? `${sy}` : `${sy}/${fine}`;
-  ws.mergeCells('A1:F1'); const t = ws.getCell('A1'); t.value = `RIEPILOGO FAMILIARE ${titolo}`; styleCell(t, { fill: COL.blu, bold: true });
-  ['MESE', 'RICARDO', 'SILVANA', 'TOTALE', 'DI CUI FISSE', 'DI CUI EXTRA'].forEach((h, i) => { const c = ws.getCell(3, i + 1); c.value = h; styleCell(c, { fill: COL.verde, bold: true }); });
+  const P = persone(), due = P.length > 1, cT = due ? 4 : 3, cF = cT + 1, cE = cT + 2;   // colonne: MESE | persone | TOTALE | FISSE | EXTRA
+  ws.mergeCells(`A1:${colL(cE)}1`); const t = ws.getCell('A1'); t.value = `RIEPILOGO FAMILIARE ${titolo}`; styleCell(t, { fill: COL.blu, bold: true });
+  ['MESE', ...P.map(n => n.toUpperCase()), 'TOTALE', 'DI CUI FISSE', 'DI CUI EXTRA'].forEach((h, i) => { const c = ws.getCell(3, i + 1); c.value = h; styleCell(c, { fill: COL.verde, bold: true }); });
   const ordine = []; for (let i = 0; i < 12; i++) { const m = ((sm - 1 + i) % 12) + 1; ordine.push(fogli.find(f => f.m === m)); }
   const serie = []; let tR = 0, tS = 0, tF = 0, tE = 0;
   ordine.forEach((f, i) => {
-    const r = 4 + i, sh = `'${MESI[f.m - 1]}'`, a = f.sums[0], b = f.sums[1];
+    const r = 4 + i, sh = `'${MESI[f.m - 1]}'`, a = f.sums[0], b = f.sums[1] || { totale: 0, fisso: 0, extra: 0 };
     const c0 = ws.getCell(r, 1); c0.value = `${MESI_IT[f.m - 1]} ${f.y}`; styleCell(c0, { bold: true, center: false });
     const put = (col, formula, res) => { const c = ws.getCell(r, col); c.value = { formula, result: res }; styleCell(c, { fmt: FMT_EUR, center: false }); };
-    put(2, `${sh}!H${f.TT}`, a.totale); put(3, `${sh}!R${f.TT}`, b.totale); put(4, `B${r}+C${r}`, round2(a.totale + b.totale));
-    put(5, `${sh}!I${f.T}+${sh}!S${f.T}`, round2(a.fisso + b.fisso)); put(6, `${sh}!F${f.T}+${sh}!P${f.T}`, round2(a.extra + b.extra));
+    put(2, `${sh}!H${f.TT}`, a.totale);
+    if (due) put(3, `${sh}!R${f.TT}`, b.totale);
+    put(cT, due ? `B${r}+C${r}` : `B${r}`, round2(a.totale + b.totale));
+    put(cF, due ? `${sh}!I${f.T}+${sh}!S${f.T}` : `${sh}!I${f.T}`, round2(a.fisso + b.fisso));
+    put(cE, due ? `${sh}!F${f.T}+${sh}!P${f.T}` : `${sh}!F${f.T}`, round2(a.extra + b.extra));
     tR += a.totale; tS += b.totale; tF += a.fisso + b.fisso; tE += a.extra + b.extra;
     serie.push({ label: MESI_BREVI[f.m - 1], R: a.totale, S: b.totale });
   });
   const lt = ws.getCell(16, 1); lt.value = 'TOTALE'; styleCell(lt, { bold: true, center: false });
-  [[2, tR], [3, tS], [4, tR + tS], [5, tF], [6, tE]].forEach(([col, v]) => { const c = ws.getCell(16, col); c.value = { formula: `SUM(${colL(col)}4:${colL(col)}15)`, result: round2(v) }; styleCell(c, { bold: true, fmt: FMT_EUR, fill: col === 4 ? COL.tot : undefined, center: false }); });
+  [[2, tR], ...(due ? [[3, tS]] : []), [cT, tR + tS], [cF, tF], [cE, tE]].forEach(([col, v]) => { const c = ws.getCell(16, col); c.value = { formula: `SUM(${colL(col)}4:${colL(col)}15)`, result: round2(v) }; styleCell(c, { bold: true, fmt: FMT_EUR, fill: col === cT ? COL.tot : undefined, center: false }); });
   // voci: valori al momento dell'esportazione
   ws.getCell('H3').value = 'VOCE (totale periodo)'; styleCell(ws.getCell('H3'), { fill: COL.verde, bold: true });
   ws.getCell('I3').value = 'TOTALE'; styleCell(ws.getCell('I3'), { fill: COL.verde, bold: true });
@@ -582,7 +588,7 @@ async function creaWorkbook() {
   if (voci.length > 12) voci = [...voci.slice(0, 11), ['ALTRE', voci.slice(11).reduce((a, v) => a + v[1], 0)]];
   voci.forEach(([n, v], i) => { const a = ws.getCell(4 + i, 8); a.value = n; styleCell(a, { center: false }); const b = ws.getCell(4 + i, 9); b.value = round2(v); styleCell(b, { fmt: FMT_EUR, center: false }); });
   const n1 = ws.getCell(4 + voci.length, 8); n1.value = '(valori alla data di esportazione)'; n1.font = { italic: true, color: { argb: 'FF7A8894' }, size: 9 };
-  const id1 = wb.addImage({ base64: canvasStack(serie), extension: 'png' });
+  const id1 = wb.addImage({ base64: canvasStack(serie, persone()), extension: 'png' });
   ws.addImage(id1, { tl: { col: 0, row: 18 }, ext: { width: 640, height: 286 } });
   if (voci.length) {
     const id2 = wb.addImage({ base64: canvasBars(voci.slice(0, 12), 'Dove vanno i soldi (periodo)'), extension: 'png' });
@@ -611,15 +617,16 @@ const cellVal = c => { let v = c.value; if (v && typeof v === 'object' && !(v in
 const numVal = v => typeof v === 'number' ? v : (parseNum(v) || 0);
 async function importaExcel(file) {
   const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
-  const righe = [], note = []; let prevYear = null, trovati = 0;
+  const righe = [], note = []; let scartate = 0; let prevYear = null, trovati = 0;
   for (const nome of MESI) {
     const ws = wb.worksheets.find(w => norm(w.name) === nome); if (!ws) continue;
     trovati++; const m = MESI.indexOf(nome) + 1, sheetRows = [];
-    for (let r = 4; r <= Math.min(ws.rowCount, 150); r++) PERSONE.forEach((p, b) => {
-      const o = b * 10, voce = cellVal(ws.getCell(r, 4 + o)); if (!voce) return;
+    for (let r = 4; r <= Math.min(ws.rowCount, 150); r++) [0, 1].forEach(b => {
+      const p = persone()[b], o = b * 10, voce = cellVal(ws.getCell(r, 4 + o)); if (!voce) return;
       const lab = String(voce).trim(); if (!lab || norm(lab) === 'TOTALE') return;
       const dv = cellVal(ws.getCell(r, 2 + o)), ex = numVal(cellVal(ws.getCell(r, 6 + o))), im = numVal(cellVal(ws.getCell(r, 8 + o))), fi = numVal(cellVal(ws.getCell(r, 9 + o)));
       if (!(ex > 0) && !(im > 0)) return;
+      if (!p) { scartate++; return; }                     // blocco di una seconda persona che qui non c'è
       let d = null; if (dv instanceof Date) d = { y: dv.getUTCFullYear(), m: dv.getUTCMonth() + 1, d: dv.getUTCDate() };
       sheetRows.push({ p, lab, d, ex, im, fi });
     });
@@ -629,7 +636,7 @@ async function importaExcel(file) {
     const anniPresenti = [...new Set(sheetRows.filter(r => r.d).map(r => r.d.y))].sort();
     if (anniPresenti.length > 1) note.push(`${nome}: ci sono date di anni diversi (${anniPresenti.join(' e ')}). Le ho lasciate come nel file.`);
     prevYear = annoFoglio;
-    PERSONE.forEach(p => {
+    persone().forEach(p => {
       const blocco = sheetRows.filter(r => r.p === p), anno = annoDi(blocco) ?? annoFoglio;
       blocco.forEach(r => righe.push({ ...r, nd: !r.d, y: r.d ? r.d.y : anno, m: r.d ? r.d.m : m, dd: r.d ? r.d.d : 1 }));
     });
@@ -648,7 +655,7 @@ async function importaExcel(file) {
   righe.forEach(r => { if (r.ex > 0) add(r, 'EXTRA', r.ex); if (r.im > 0) add(r, r.fi > 0 ? 'FISSO' : 'IMPORTO', r.im); });
   Object.entries(voto).forEach(([v, c]) => { if (!(v in S.tipoPerVoce) || !DEFAULT_TIPO[v]) S.tipoPerVoce[v] = c.EXTRA > c.IMPORTO ? 'EXTRA' : 'IMPORTO'; });
   save();
-  return { nuove, doppie, senzaData, note, fogli: trovati };
+  return { nuove, doppie, senzaData, note, scartate, fogli: trovati };
 }
 
 // ------------------------------------------------------------ copia di sicurezza
@@ -716,10 +723,19 @@ function mergeAll(L, R, adoptRemoteRecurring) {
   const expenses = mergeList(L.expenses, R.expenses);
   let recurring = adoptRemoteRecurring ? (R.recurring || []).filter(x => !(del[x.id] !== undefined && del[x.id] >= (x.u || 0))) : mergeList(L.recurring, R.recurring);
   const seen = new Set(); recurring = recurring.filter(r => { const k = [r.persona, norm(r.voce), r.tipo, r.importo, r.giorno, r.da, r.a].join('|'); if (seen.has(k)) return false; seen.add(k); return true; });
-  return Object.assign({}, L, { expenses, recurring, del, voci: [...new Set([...(L.voci || []), ...(R.voci || [])])], tipoPerVoce: { ...(R.tipoPerVoce || {}), ...(L.tipoPerVoce || {}) } });
+  const nomiR = (R.personeU || 0) > (L.personeU || 0);
+  const merged = Object.assign({}, L, { persone: nomiR ? R.persone : L.persone, personeU: Math.max(L.personeU || 0, R.personeU || 0), rinomine: { ...(R.rinomine || {}), ...(L.rinomine || {}) }, expenses, recurring, del, voci: [...new Set([...(L.voci || []), ...(R.voci || [])])], tipoPerVoce: { ...(R.tipoPerVoce || {}), ...(L.tipoPerVoce || {}) } });
+  return riassegnaOrfani(merged);
+}
+// spese con un nome che non esiste più (scritte da un dispositivo non ancora aggiornato): seguono la rinomina, altrimenti vanno alla prima persona
+function riassegnaOrfani(st) {
+  const P = (st.persone && st.persone.length) ? st.persone : ['Ricardo', 'Silvana'], ren = st.rinomine || {};
+  const fix = n => { let x = n, k = 0; while (!P.includes(x) && ren[x] && k++ < 6) x = ren[x]; return P.includes(x) ? x : P[0]; };
+  [st.expenses, st.recurring].forEach(list => (list || []).forEach(r => { if (!P.includes(r.persona)) { r.persona = fix(r.persona); r.u = Date.now(); } }));
+  return st;
 }
 const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-const payload = st => ({ v: 1, expenses: [...(st.expenses || [])].sort(byId), recurring: [...(st.recurring || [])].sort(byId), del: st.del || {}, voci: [...(st.voci || [])].sort(), tipoPerVoce: st.tipoPerVoce || {} });
+const payload = st => ({ v: 1, expenses: [...(st.expenses || [])].sort(byId), recurring: [...(st.recurring || [])].sort(byId), del: st.del || {}, voci: [...(st.voci || [])].sort(), tipoPerVoce: st.tipoPerVoce || {}, persone: st.persone || ['Ricardo', 'Silvana'], personeU: st.personeU || 0, rinomine: st.rinomine || {} });
 const stable = o => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v)) ? Object.fromEntries(Object.entries(v).sort()) : v);
 async function sincronizza(manuale) {
   if (!syncOn()) { if (manuale) toast('Prima collega l\'archivio'); return; }
@@ -743,6 +759,37 @@ async function sincronizza(manuale) {
     saveSync();
   }
   syncBusy = false; lastSyncTry = Date.now(); updateSyncUI();
+}
+function openNomi() {
+  const P = persone();
+  sheet.hidden = false; form = null;
+  sheet.innerHTML = `<div class="scrim" data-act="close"></div><section class="panel" role="dialog" aria-modal="true" aria-label="Nominativi"><div class="grab"></div><div class="card" style="box-shadow:none">
+    <h2>Nominativi</h2>
+    <p>Scrivi i nomi di chi usa il bilancio. Se lo usi per una sola persona, lascia vuoto il secondo nome.</p>
+    <div class="field"><label for="nP1">Persona 1</label><input class="inp" id="nP1" maxlength="20" autocomplete="off" value="${esc(P[0])}"></div>
+    <div class="field"><label for="nP2">Persona 2 (facoltativa)</label><input class="inp" id="nP2" maxlength="20" autocomplete="off" placeholder="vuoto = una sola persona" value="${esc(P[1] || '')}"></div>
+    <p class="hint">Cambiare un nome aggiorna anche le spese già salvate, le voci fisse e l'intestazione dell'Excel (SPESE - NOME).</p>
+    <div class="actions" style="margin-top:12px"><button class="btn" data-act="close">Annulla</button><button class="btn primary" data-act="nomiSave">Salva nominativi</button></div></div></section>`;
+}
+function salvaNomi() {
+  const n1 = $('#nP1').value.trim().replace(/\s+/g, ' '), n2 = $('#nP2').value.trim().replace(/\s+/g, ' ');
+  if (!n1) { toast('Scrivi almeno il primo nome'); return; }
+  if (n2 && n2.toLowerCase() === n1.toLowerCase()) { toast('I due nomi devono essere diversi'); return; }
+  const vecchi = persone(), nuovi = n2 ? [n1, n2] : [n1];
+  const mappa = {}; vecchi.forEach((v, i) => { const nv = nuovi[i] ?? nuovi[0]; if (nv !== v) mappa[v] = nv; });
+  if (!Object.keys(mappa).length && vecchi.length === nuovi.length) { closeForm(); return; }
+  const toccati = [...S.expenses, ...S.recurring].filter(r => mappa[r.persona] !== undefined);
+  if (vecchi.length === 2 && nuovi.length === 1) {
+    const dal2 = [...S.expenses, ...S.recurring].filter(r => r.persona === vecchi[1]).length;
+    if (dal2 && !confirm(`Le ${dal2} spese e voci di ${vecchi[1]} passeranno a ${nuovi[0]}. Continuare?`)) return;
+  }
+  const t = Date.now();
+  [...S.expenses, ...S.recurring].forEach(r => { if (mappa[r.persona] !== undefined) { r.persona = mappa[r.persona]; r.u = t; } });
+  S.rinomine = S.rinomine || {}; Object.entries(mappa).forEach(([v, nv]) => { if (nuovi.includes(v)) return; S.rinomine[v] = nv; });
+  nuovi.forEach(nv => { delete S.rinomine[nv]; });
+  S.persone = nuovi; S.personeU = t; ui.persona = '';
+  if (!nuovi.includes(S.settings.persona)) S.settings.persona = nuovi[0];
+  save(); closeForm(); render(); toast(toccati.length ? `Nominativi aggiornati (${toccati.length} spese)` : 'Nominativi aggiornati');
 }
 function openSync() {
   sheet.hidden = false; form = null;
@@ -779,6 +826,8 @@ document.addEventListener('click', async ev => {
     case 'importXlsx': $('#inXlsx').click(); break;
     case 'backup': backup(); break;
     case 'restore': $('#inJson').click(); break;
+    case 'nomi': openNomi(); break;
+    case 'nomiSave': salvaNomi(); break;
     case 'syncSetup': openSync(); break;
     case 'syncSave': { const repo = $('#sRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, ''), tok = $('#sTok').value.trim() || sync.token; if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !tok) { toast('Servono archivio (utente/nome) e token'); break; } sync = { repo, token: tok, last: 0, err: '' }; saveSync(); closeForm(); render(); await sincronizza(true); render(); break; }
     case 'syncNow': await sincronizza(true); break;
@@ -814,7 +863,7 @@ $('#inXlsx').addEventListener('change', async e => {
   try {
     const r = await importaExcel(f);
     if (r.err) box.innerHTML = `<div class="report">${esc(r.err)}</div>`;
-    else { render(); $('#impReport').innerHTML = `<div class="report">${esc(`Importate ${r.nuove} spese da ${r.fogli} fogli.${r.doppie ? `\nGià presenti, saltate: ${r.doppie}.` : ''}${r.senzaData ? `\nSenza data nel file (le metto al giorno 1 del mese): ${r.senzaData}.` : ''}${r.note.length ? '\n' + r.note.join('\n') : ''}`)}</div>`; }
+    else { render(); $('#impReport').innerHTML = `<div class="report">${esc(`Importate ${r.nuove} spese da ${r.fogli} fogli.${r.scartate ? `\nRighe del secondo nominativo non importate (ora usi una sola persona): ${r.scartate}.` : ''}${r.doppie ? `\nGià presenti, saltate: ${r.doppie}.` : ''}${r.senzaData ? `\nSenza data nel file (le metto al giorno 1 del mese): ${r.senzaData}.` : ''}${r.note.length ? '\n' + r.note.join('\n') : ''}`)}</div>`; }
   } catch (err) { console.error(err); box.innerHTML = '<div class="report">Non riesco a leggere questo file. È un .xlsx valido?</div>'; }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hidden) { queue = []; closeForm(); } });
@@ -827,4 +876,4 @@ if (navigator.storage && navigator.storage.persist) navigator.storage.persist().
 if (syncOn()) sincronizza();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syncOn() && Date.now() - lastSyncTry > 20000) sincronizza(); });
 window.addEventListener('online', () => { if (syncOn()) sincronizza(); });
-window.__app = { get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };
+window.__app = { get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, persone, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };

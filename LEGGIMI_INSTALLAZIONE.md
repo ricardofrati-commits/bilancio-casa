@@ -33,12 +33,18 @@ lettura (circa 12 MB). Poi è tutto offline.
    (Ordinaria = colonna Importo, Extra = colonna Extra, Fissa = Importo + Fisso mensile). **Salva**.
 3. **Excel → Crea l'Excel** quando ti serve il file: ottieni l'Excel nel formato FAMILIARE.
 
+
+## 3b. Nomi e numero di persone
+Nella scheda **Spese**, il pulsante **Nominativi** permette di cambiare i nomi, o di usare la app per
+una sola persona (lascia vuoto il secondo nome). I nomi si aggiornano anche nelle spese già salvate,
+nelle voci fisse e nell'Excel (SPESE - NOME), e arrivano da soli sugli altri dispositivi collegati.
+
 ## 4. Il tuo Excel (Fase 2)
-- **Excel → Importa il tuo Excel**: carica il file FAMILIARE esistente. Le spese passano nell'app.
+- **Excel → Carica un Excel FAMILIARE**: carica un tuo file esistente (anche uno per anno). Le spese passano nell'app e si può ripetere senza doppioni.
 - **Spese fisse e ricorrenti**: METLIFE, NETFLIX, ALLEANZA, NIMS - CAFFE, TELEFONO sono già
   inserite. Ogni mese compaiono da sole nell'Excel, fino al mese in corso. Importi, giorno e
   periodo si modificano toccando la voce.
-- **Periodo**: scegli *Gennaio – Dicembre 2026* oppure *Agosto 2025 – Luglio 2026*.
+- **Anno**: scegli *Gennaio – Dicembre* dell'anno che ti serve (2026, 2027, 2028…).
 - L'ultimo foglio **RIEPILOGO** ha la tabella mensile (con formule collegate ai fogli) e due grafici.
 
 ## 5. Dati e sicurezza
