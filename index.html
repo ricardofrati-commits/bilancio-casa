@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e7a4b">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Casa">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Bilancio Casa</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <h1>Bilancio Casa</h1>
+    <p id="topTot" class="top-tot"></p>
+  </header>
+  <main id="view" tabindex="-1"></main>
+  <nav id="nav" aria-label="Sezioni">
+    <button data-tab="scan" aria-label="Scansiona">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M4 12h16"/></svg><span>Scansiona</span></button>
+    <button data-tab="list" aria-label="Spese">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></svg><span>Spese</span></button>
+    <button data-tab="chart" aria-label="Grafici del mese">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span>Mese</span></button>
+    <button data-tab="excel" aria-label="Excel e impostazioni">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h9l5 5v13H5zM14 3v5h5M8 13l4 5M12 13l-4 5"/></svg><span>Excel</span></button>
+  </nav>
+</div>
+<div id="sheet" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<input type="file" id="inCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="inFiles" accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" multiple hidden>
+<input type="file" id="inXlsx" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+<input type="file" id="inJson" accept=".json,application/json" hidden>
+<datalist id="dlVoci"></datalist>
+
+<script src="vendor/exceljs.min.js" defer></script>
+<script src="vendor/pdf.min.js" defer></script>
+<script src="vendor/tesseract/tesseract.min.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
