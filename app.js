@@ -42,21 +42,22 @@ const DEFAULT_VOCI = ['SPESA', 'FARMACIA', 'GASOLIO', 'BAR', 'RISTORANTE', 'PIZZ
 const DEFAULT_TIPO = { SPESA: 'IMPORTO', FARMACIA: 'IMPORTO', GASOLIO: 'IMPORTO', BAR: 'IMPORTO', PIZZA: 'IMPORTO', GELATO: 'IMPORTO', RISTORANTE: 'EXTRA', AMAZON: 'EXTRA', ONLINE: 'EXTRA', SHOPPING: 'EXTRA', ALTRO: 'EXTRA' };
 // Voci fisse ricavate dal file FAMILIARE 2026 (modificabili dalla schermata Excel)
 const seedRecurring = () => [
-  { id: uid(), persona: 'Ricardo', voce: 'ASS. METLIFE', importo: 17.31, tipo: 'FISSO', giorno: 15, da: '2026-08', a: '' },
-  { id: uid(), persona: 'Ricardo', voce: 'NETFLIX', importo: 13.99, tipo: 'FISSO', giorno: 15, da: '2026-08', a: '' },
-  { id: uid(), persona: 'Ricardo', voce: 'ASS. ALLEANZA', importo: 31, tipo: 'FISSO', giorno: 20, da: '2026-08', a: '' },
-  { id: uid(), persona: 'Ricardo', voce: 'NIMS - CAFFE', importo: 40.83, tipo: 'EXTRA', giorno: 1, da: '2026-08', a: '' },
-  { id: uid(), persona: 'Silvana', voce: 'ASS. ALLEANZA', importo: 43, tipo: 'FISSO', giorno: 20, da: '2026-08', a: '' },
-  { id: uid(), persona: 'Silvana', voce: 'TELEFONO', importo: 7, tipo: 'FISSO', giorno: 0, da: '2026-08', a: '' },
+  { id: 'seed-1', u: 0, persona: 'Ricardo', voce: 'ASS. METLIFE', importo: 17.31, tipo: 'FISSO', giorno: 15, da: '2026-08', a: '' },
+  { id: 'seed-2', u: 0, persona: 'Ricardo', voce: 'NETFLIX', importo: 13.99, tipo: 'FISSO', giorno: 15, da: '2026-08', a: '' },
+  { id: 'seed-3', u: 0, persona: 'Ricardo', voce: 'ASS. ALLEANZA', importo: 31, tipo: 'FISSO', giorno: 20, da: '2026-08', a: '' },
+  { id: 'seed-4', u: 0, persona: 'Ricardo', voce: 'NIMS - CAFFE', importo: 40.83, tipo: 'EXTRA', giorno: 1, da: '2026-08', a: '' },
+  { id: 'seed-5', u: 0, persona: 'Silvana', voce: 'ASS. ALLEANZA', importo: 43, tipo: 'FISSO', giorno: 20, da: '2026-08', a: '' },
+  { id: 'seed-6', u: 0, persona: 'Silvana', voce: 'TELEFONO', importo: 7, tipo: 'FISSO', giorno: 0, da: '2026-08', a: '' },
 ];
-const defaults = () => ({ v: 1, expenses: [], recurring: seedRecurring(), voci: [...DEFAULT_VOCI], tipoPerVoce: { ...DEFAULT_TIPO }, settings: { persona: 'Ricardo', periodo: '' } });
+const defaults = () => ({ v: 1, expenses: [], del: {}, recurring: seedRecurring(), voci: [...DEFAULT_VOCI], tipoPerVoce: { ...DEFAULT_TIPO }, settings: { persona: 'Ricardo', periodo: '' } });
 let S = (() => {
   try { const j = JSON.parse(localStorage.getItem(LS_KEY)); if (j && Array.isArray(j.expenses)) return Object.assign(defaults(), j); } catch (e) { /* nessun dato salvato */ }
   return defaults();
 })();
-function save() {
+function save(noSync) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(S)); }
   catch (e) { toast('Memoria piena: esporta una copia di sicurezza'); }
+  if (!noSync && typeof schedSync === 'function') schedSync();
 }
 const tipoDi = voce => S.tipoPerVoce[norm(voce)] || 'EXTRA';
 const tutteLeVoci = () => [...new Set([...S.voci, ...Object.keys(S.tipoPerVoce)])].sort();
@@ -277,7 +278,7 @@ function salvaForm() {
   const voce = norm(f.voce);
   if (!voce) { toast('Scegli una voce (SPESA, BAR, FARMACIA…)'); return; }
   if (f.dup && !f.id && !confirm('Questo scontrino è già stato salvato. Salvarlo di nuovo?')) return;
-  const rec = { id: f.id || uid(), d, persona: f.persona, voce, tipo: f.tipo, importo, nota: f.nota.trim(), hash: f.hash || undefined, nd: false };
+  const rec = { id: f.id || uid(), d, persona: f.persona, voce, tipo: f.tipo, importo, nota: f.nota.trim(), hash: f.hash || undefined, nd: false, u: Date.now() };
   if (f.id) { const i = S.expenses.findIndex(e => e.id === f.id); if (i >= 0) { rec.hash = S.expenses[i].hash; S.expenses[i] = rec; } }
   else S.expenses.push(rec);
   S.tipoPerVoce[voce] = f.tipo; S.settings.persona = f.persona;
@@ -389,6 +390,8 @@ function viewExcel() {
       <p>Un foglio per mese, Ricardo a sinistra e Silvana a destra, come il tuo file. Le spese fisse si aggiungono da sole.</p>
       <div class="field"><label for="selPer">Periodo</label><select class="sel" id="selPer">${po.map(p => `<option value="${p.v}" ${p.v === pc ? 'selected' : ''}>${p.t}</option>`).join('')}</select></div>
       <div class="stack" style="margin-top:12px"><button class="btn primary big" data-act="export" id="btnExp">Crea l'Excel</button><button class="btn" data-act="share" id="btnShare" hidden>Condividi il file</button></div></section>
+    <section class="card"><h2>Stesso bilancio su telefono e PC</h2>
+      ${syncOn() ? `<p>Collegato a <b>${esc(sync.repo)}</b>.</p><p id="syncStat" class="hint">${esc(syncStatusText())}</p><div class="two" style="margin-top:10px"><button class="btn primary" data-act="syncNow">Sincronizza ora</button><button class="btn" data-act="syncOff">Scollega</button></div>` : `<p>Collega un archivio privato su GitHub: spese e voci fisse restano uguali su telefono e computer, e l'Excel esce identico da entrambi.</p><button class="btn primary" style="margin-top:10px" data-act="syncSetup">Collega</button>`}</section>
     <section class="card"><h2>Spese fisse e ricorrenti</h2><p>Compaiono ogni mese nell'Excel, fino al mese in corso, se non hai già inserito la stessa voce.</p>
       <div style="margin-top:6px">${S.recurring.length ? S.recurring.map(r => `<button class="rec" data-act="editRec" data-id="${r.id}"><span><b style="font-weight:650">${esc(r.voce)}</b><small>${r.persona} · ${TIPI[r.tipo]}${r.giorno ? ' · giorno ' + r.giorno : ''} · da ${r.da ? labelMese(r.da) : 'sempre'}${r.a ? ' a ' + labelMese(r.a) : ''}</small></span><b>${eur(r.importo)}</b></button>`).join('') : '<p class="hint">Nessuna voce.</p>'}</div>
       <button class="btn small" style="margin-top:10px" data-act="newRec">+ Aggiungi voce fissa</button></section>
@@ -427,7 +430,7 @@ function openRec(r) {
 function saveRec(id) {
   const imp = round2(parseNum($('#rImp').value)), voce = norm($('#rVoce').value);
   if (!voce || !(imp > 0)) { toast('Servono voce e importo'); return; }
-  const rec = { id: id || uid(), persona: $('#rPers').value, voce, importo: imp, tipo: $('#rTipo').value, giorno: Math.min(31, parseInt($('#rGiorno').value) || 0), da: $('#rDa').value, a: $('#rA').value };
+  const rec = { id: id || uid(), persona: $('#rPers').value, voce, importo: imp, tipo: $('#rTipo').value, giorno: Math.min(31, parseInt($('#rGiorno').value) || 0), da: $('#rDa').value, a: $('#rA').value, u: Date.now() };
   const i = S.recurring.findIndex(r => r.id === id);
   if (i >= 0) S.recurring[i] = rec; else S.recurring.push(rec);
   S.tipoPerVoce[voce] = S.tipoPerVoce[voce] || (rec.tipo === 'EXTRA' ? 'EXTRA' : 'IMPORTO');
@@ -631,12 +634,14 @@ async function importaExcel(file) {
   }
   if (!trovati) return { err: 'Non trovo i fogli GENNAIO … DICEMBRE in questo file.' };
   const prima = new Map(); S.expenses.forEach(e => { const k = [e.persona, e.d, e.voce, e.tipo, e.importo].join('|'); prima.set(k, (prima.get(k) || 0) + 1); });
-  let nuove = 0, doppie = 0, senzaData = 0; const voto = {};
+  let nuove = 0, doppie = 0, senzaData = 0; const voto = {}, occ = {};
+  const hashStr = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) >>> 0; return h.toString(36); };
   const add = (r, tipo, importo) => {
     const d = `${r.y}-${pad(r.m)}-${pad(r.dd)}`, voce = norm(r.lab), k = [r.p, d, voce, tipo, importo].join('|');
     (voto[voce] ||= { IMPORTO: 0, EXTRA: 0 })[tipo === 'EXTRA' ? 'EXTRA' : 'IMPORTO']++;
+    const n = occ[k] = (occ[k] || 0) + 1;
     if ((prima.get(k) || 0) > 0) { prima.set(k, prima.get(k) - 1); doppie++; return; }
-    S.expenses.push({ id: uid(), d, persona: r.p, voce, tipo, importo: round2(importo), nota: '', nd: r.nd }); nuove++; if (r.nd) senzaData++;
+    S.expenses.push({ id: 'x' + hashStr(k) + '-' + n, d, persona: r.p, voce, tipo, importo: round2(importo), nota: '', nd: r.nd, u: Date.now() }); nuove++; if (r.nd) senzaData++;
   };
   righe.forEach(r => { if (r.ex > 0) add(r, 'EXTRA', r.ex); if (r.im > 0) add(r, r.fi > 0 ? 'FISSO' : 'IMPORTO', r.im); });
   Object.entries(voto).forEach(([v, c]) => { if (!(v in S.tipoPerVoce) || !DEFAULT_TIPO[v]) S.tipoPerVoce[v] = c.EXTRA > c.IMPORTO ? 'EXTRA' : 'IMPORTO'; });
@@ -655,8 +660,97 @@ async function restore(file) {
     const j = JSON.parse(await file.text());
     if (!Array.isArray(j.expenses)) throw new Error('formato');
     if (!confirm(`Ripristinare ${j.expenses.length} spese? I dati attuali verranno sostituiti.`)) return;
-    S = Object.assign(defaults(), j); save(); render(); toast('Dati ripristinati');
+    S = Object.assign(defaults(), j); S.del = S.del || {}; save(); render(); toast('Dati ripristinati');
   } catch (e) { toast('File di copia non valido'); }
+}
+
+
+// ------------------------------------------------------------ sincronizzazione telefono <-> PC (archivio privato GitHub)
+const SYNC_KEY = 'bilancio-casa.sync', SYNC_FILE = 'bilancio-casa-dati.json';
+let sync = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } })();
+const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* ignora */ } };
+let syncBusy = false, syncTimer = null, lastSyncTry = 0;
+const syncOn = () => !!(sync.repo && sync.token);
+const syncHeaders = () => ({ Authorization: 'Bearer ' + sync.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' });
+const syncURL = () => `https://api.github.com/repos/${sync.repo}/contents/${SYNC_FILE}`;
+function syncStatusText() {
+  if (syncBusy) return 'Sincronizzo…';
+  if (sync.err) return '⚠ ' + sync.err;
+  return sync.last ? 'Ultima sincronizzazione: ' + new Date(sync.last).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : 'Non ancora sincronizzato';
+}
+function updateSyncUI() { const e = $('#syncStat'); if (e) e.textContent = syncStatusText(); }
+function schedSync() { if (!syncOn()) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => sincronizza(), 2500); }
+class SyncErr extends Error { }
+async function ghGet() {
+  const res = await fetch(syncURL(), { headers: syncHeaders(), cache: 'no-store' });
+  if (res.status === 404) {
+    const rr = await fetch(`https://api.github.com/repos/${sync.repo}`, { headers: syncHeaders(), cache: 'no-store' });
+    if (!rr.ok) throw new SyncErr(rr.status === 401 ? 'Token non valido o scaduto.' : 'Archivio non trovato: controlla il nome e i permessi del token.');
+    return { data: null, sha: null };
+  }
+  if (res.status === 401) throw new SyncErr('Token non valido o scaduto.');
+  if (res.status === 403) throw new SyncErr('Il token non ha i permessi su questo archivio.');
+  if (!res.ok) throw new SyncErr('GitHub ha risposto con un errore (' + res.status + ').');
+  const j = await res.json();
+  if (!j.content) throw new SyncErr('Il file dei dati è troppo grande per la sincronizzazione.');
+  const bin = atob(j.content.replace(/\s/g, '')), txt = new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+  return { data: JSON.parse(txt), sha: j.sha };
+}
+async function ghPut(obj, sha) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj)); let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  const body = { message: 'Sincronizzazione Bilancio Casa', content: btoa(bin) }; if (sha) body.sha = sha;
+  const res = await fetch(syncURL(), { method: 'PUT', headers: { ...syncHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (res.status === 409 || res.status === 422) return { conflict: true };
+  if (res.status === 401) throw new SyncErr('Token non valido o scaduto.');
+  if (res.status === 403 || res.status === 404) throw new SyncErr('Il token non può scrivere su questo archivio (serve il permesso Contents: Read and write).');
+  if (!res.ok) throw new SyncErr('GitHub ha risposto con un errore (' + res.status + ').');
+  return { ok: true, sha: (await res.json()).content.sha };
+}
+// unisce due copie: per ogni spesa vince la modifica più recente; le cancellazioni valgono su entrambi
+function mergeAll(L, R, adoptRemoteRecurring) {
+  const del = { ...(R.del || {}) }; Object.entries(L.del || {}).forEach(([k, t]) => { del[k] = Math.max(del[k] || 0, t); });
+  const mergeList = (a, b) => { const m = new Map(); [...(b || []), ...(a || [])].forEach(x => { const c = m.get(x.id); if (!c || (x.u || 0) >= (c.u || 0)) m.set(x.id, x); }); return [...m.values()].filter(x => !(del[x.id] !== undefined && del[x.id] >= (x.u || 0))); };
+  const expenses = mergeList(L.expenses, R.expenses);
+  let recurring = adoptRemoteRecurring ? (R.recurring || []).filter(x => !(del[x.id] !== undefined && del[x.id] >= (x.u || 0))) : mergeList(L.recurring, R.recurring);
+  const seen = new Set(); recurring = recurring.filter(r => { const k = [r.persona, norm(r.voce), r.tipo, r.importo, r.giorno, r.da, r.a].join('|'); if (seen.has(k)) return false; seen.add(k); return true; });
+  return Object.assign({}, L, { expenses, recurring, del, voci: [...new Set([...(L.voci || []), ...(R.voci || [])])], tipoPerVoce: { ...(R.tipoPerVoce || {}), ...(L.tipoPerVoce || {}) } });
+}
+const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const payload = st => ({ v: 1, expenses: [...(st.expenses || [])].sort(byId), recurring: [...(st.recurring || [])].sort(byId), del: st.del || {}, voci: [...(st.voci || [])].sort(), tipoPerVoce: st.tipoPerVoce || {} });
+const stable = o => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v)) ? Object.fromEntries(Object.entries(v).sort()) : v);
+async function sincronizza(manuale) {
+  if (!syncOn()) { if (manuale) toast('Prima collega l\'archivio'); return; }
+  if (syncBusy) return; syncBusy = true; sync.err = ''; updateSyncUI();
+  const prima = stable(payload(S));
+  try {
+    for (let tent = 0; tent < 4; tent++) {
+      const r = await ghGet();
+      if (r.data) { S = mergeAll(S, r.data, !sync.last && S.expenses.length === 0); save(true); }
+      const out = payload(S);
+      if (r.data && stable(payload(r.data)) === stable(out)) break;      // già allineato: niente da scrivere
+      const put = await ghPut(out, r.sha);
+      if (put.ok) break;
+      if (tent === 3) throw new SyncErr('Conflitto con l\'altro dispositivo: riprova tra poco.');
+    }
+    sync.last = Date.now(); saveSync();
+    if (stable(payload(S)) !== prima) { render(); if (manuale) toast('Dati aggiornati'); } else if (manuale) toast('Già tutto allineato');
+  } catch (e) {
+    sync.err = e instanceof SyncErr ? e.message : (navigator.onLine ? 'Sincronizzazione non riuscita.' : 'Sei offline: riprovo appena torna la rete.');
+    if (!(e instanceof SyncErr)) console.warn(e);
+    saveSync();
+  }
+  syncBusy = false; lastSyncTry = Date.now(); updateSyncUI();
+}
+function openSync() {
+  sheet.hidden = false; form = null;
+  sheet.innerHTML = `<div class="scrim" data-act="close"></div><section class="panel" role="dialog" aria-modal="true" aria-label="Collega l'archivio"><div class="grab"></div><div class="card" style="box-shadow:none">
+    <h2>Collega l'archivio privato</h2>
+    <p>Ti servono un repository <b>privato</b> su GitHub (per i dati) e un token con accesso solo a quello. La guida passo passo è nel file LEGGIMI_SINCRONIZZAZIONE.md.</p>
+    <div class="field"><label for="sRepo">Archivio dei dati (utente/nome)</label><input class="inp" id="sRepo" placeholder="es. mario/bilancio-dati" autocapitalize="off" autocomplete="off" value="${esc(sync.repo || '')}"></div>
+    <div class="field"><label for="sTok">Token di accesso</label><input class="inp" id="sTok" type="password" placeholder="github_pat_…" autocapitalize="off" autocomplete="off"></div>
+    <p class="hint">Il token resta solo su questo dispositivo e non entra nelle copie di sicurezza.</p>
+    <div class="actions" style="margin-top:12px"><button class="btn" data-act="close">Annulla</button><button class="btn primary" data-act="syncSave">Collega e sincronizza</button></div></div></section>`;
 }
 
 // ------------------------------------------------------------ eventi
@@ -674,7 +768,7 @@ document.addEventListener('click', async ev => {
     case 'voce': form.voce = el.dataset.v; form.dirty.voce = true; if (!form.dirty.tipo) form.tipo = tipoDi(form.voce); renderSheet(); break;
     case 'tipo': form.tipo = el.dataset.t; form.dirty.tipo = true; renderSheet(); break;
     case 'salva': salvaForm(); break;
-    case 'elimina': if (confirm('Eliminare questa spesa?')) { S.expenses = S.expenses.filter(e => e.id !== form.id); save(); closeForm(); render(); toast('Spesa eliminata'); } break;
+    case 'elimina': if (confirm('Eliminare questa spesa?')) { S.del = S.del || {}; S.del[form.id] = Date.now(); S.expenses = S.expenses.filter(e => e.id !== form.id); save(); closeForm(); render(); toast('Spesa eliminata'); } break;
     case 'edit': { const e = S.expenses.find(x => x.id === el.dataset.id); if (e) openForm(newForm({ id: e.id, importo: String(e.importo).replace('.', ','), d: e.d, persona: e.persona, voce: e.voce, tipo: e.tipo, nota: e.nota || '', dirty: { importo: 1, d: 1, voce: 1, tipo: 1 } })); break; }
     case 'fPersona': ui.persona = el.dataset.p; render(); break;
     case 'barra': { const s = seriesMensili(meseCorrente()).find(x => x.ym === el.dataset.ym); ui.sel = el.dataset.ym; const ro = $('#readout'); if (ro) ro.innerHTML = readoutHTML(s); break; }
@@ -683,10 +777,14 @@ document.addEventListener('click', async ev => {
     case 'importXlsx': $('#inXlsx').click(); break;
     case 'backup': backup(); break;
     case 'restore': $('#inJson').click(); break;
+    case 'syncSetup': openSync(); break;
+    case 'syncSave': { const repo = $('#sRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, ''), tok = $('#sTok').value.trim() || sync.token; if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !tok) { toast('Servono archivio (utente/nome) e token'); break; } sync = { repo, token: tok, last: 0, err: '' }; saveSync(); closeForm(); render(); await sincronizza(true); render(); break; }
+    case 'syncNow': await sincronizza(true); break;
+    case 'syncOff': if (confirm('Scollegare questo dispositivo? I dati restano qui e nell\'archivio.')) { sync = {}; saveSync(); render(); } break;
     case 'newRec': openRec(null); break;
     case 'editRec': openRec(S.recurring.find(r => r.id === el.dataset.id)); break;
     case 'saveRec': saveRec(el.dataset.id); break;
-    case 'delRec': { const id = $('[data-act=saveRec]').dataset.id; if (confirm('Eliminare questa voce fissa?')) { S.recurring = S.recurring.filter(r => r.id !== id); save(); closeForm(); render(); } break; }
+    case 'delRec': { const id = $('[data-act=saveRec]').dataset.id; if (confirm('Eliminare questa voce fissa?')) { S.del = S.del || {}; S.del[id] = Date.now(); S.recurring = S.recurring.filter(r => r.id !== id); save(); closeForm(); render(); } break; }
   }
 });
 document.addEventListener('input', ev => {
@@ -721,4 +819,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hid
 render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
-window.__app = { get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, findAmount, findDate, suggestVoce, render, ui };
+if (syncOn()) sincronizza();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syncOn() && Date.now() - lastSyncTry > 20000) sincronizza(); });
+window.addEventListener('online', () => { if (syncOn()) sincronizza(); });
+window.__app = { get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };
