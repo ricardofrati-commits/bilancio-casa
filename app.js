@@ -378,25 +378,27 @@ function viewChart() {
 // --- Excel / impostazioni
 function periodOptions() {
   const ys = S.expenses.map(e => +e.d.slice(0, 4)), cy = new Date().getFullYear();
-  const min = Math.min(cy, ...ys), max = Math.max(cy + 1, ...ys), o = [];
-  for (let y = max; y >= min - 1; y--) o.push({ v: `1-${y}`, t: `Gennaio – Dicembre ${y}` });
-  for (let y = max; y >= min - 1; y--) o.push({ v: `8-${y}`, t: `Agosto ${y} – Luglio ${y + 1}` });
+  const min = Math.min(cy, ...ys), max = Math.max(cy + 9, ...ys), o = [];
+  for (let y = min; y <= max; y++) o.push({ v: `1-${y}`, t: `Gennaio – Dicembre ${y}` });
   return o;
 }
-const periodoCorrente = () => S.settings.periodo || `1-${new Date().getFullYear()}`;
+const periodoCorrente = () => /^1-\d{4}$/.test(S.settings.periodo || '') ? S.settings.periodo : `1-${new Date().getFullYear()}`;
 function viewExcel() {
   const po = periodOptions(), pc = periodoCorrente();
   return `<section class="card"><h2>Excel FAMILIARE</h2>
       <p>Un foglio per mese, Ricardo a sinistra e Silvana a destra, come il tuo file. Le spese fisse si aggiungono da sole.</p>
-      <div class="field"><label for="selPer">Periodo</label><select class="sel" id="selPer">${po.map(p => `<option value="${p.v}" ${p.v === pc ? 'selected' : ''}>${p.t}</option>`).join('')}</select></div>
-      <div class="stack" style="margin-top:12px"><button class="btn primary big" data-act="export" id="btnExp">Crea l'Excel</button><button class="btn" data-act="share" id="btnShare" hidden>Condividi il file</button></div></section>
+      <div class="field"><label for="selPer">Anno</label><select class="sel" id="selPer">${po.map(p => `<option value="${p.v}" ${p.v === pc ? 'selected' : ''}>${p.t}</option>`).join('')}</select></div>
+      <div class="stack" style="margin-top:12px">
+        <button class="btn primary big" data-act="export" id="btnExp">Crea l'Excel</button>
+        <button class="btn big" data-act="importXlsx">Carica un Excel FAMILIARE</button>
+        <button class="btn" data-act="share" id="btnShare" hidden>Condividi il file</button></div>
+      <p class="hint" style="margin-top:10px">Il file caricato porta qui le sue spese, anche di anni diversi (2025, 2026, 2027…). Si può ripetere senza creare doppioni.</p>
+      <div id="impReport"></div></section>
     <section class="card"><h2>Stesso bilancio su telefono e PC</h2>
       ${syncOn() ? `<p>Collegato a <b>${esc(sync.repo)}</b>.</p><p id="syncStat" class="hint">${esc(syncStatusText())}</p><div class="two" style="margin-top:10px"><button class="btn primary" data-act="syncNow">Sincronizza ora</button><button class="btn" data-act="syncOff">Scollega</button></div>` : `<p>Collega un archivio privato su GitHub: spese e voci fisse restano uguali su telefono e computer, e l'Excel esce identico da entrambi.</p><button class="btn primary" style="margin-top:10px" data-act="syncSetup">Collega</button>`}</section>
     <section class="card"><h2>Spese fisse e ricorrenti</h2><p>Compaiono ogni mese nell'Excel, fino al mese in corso, se non hai già inserito la stessa voce.</p>
       <div style="margin-top:6px">${S.recurring.length ? S.recurring.map(r => `<button class="rec" data-act="editRec" data-id="${r.id}"><span><b style="font-weight:650">${esc(r.voce)}</b><small>${r.persona} · ${TIPI[r.tipo]}${r.giorno ? ' · giorno ' + r.giorno : ''} · da ${r.da ? labelMese(r.da) : 'sempre'}${r.a ? ' a ' + labelMese(r.a) : ''}</small></span><b>${eur(r.importo)}</b></button>`).join('') : '<p class="hint">Nessuna voce.</p>'}</div>
       <button class="btn small" style="margin-top:10px" data-act="newRec">+ Aggiungi voce fissa</button></section>
-    <section class="card"><h2>Importa il tuo Excel</h2><p>Carica un file FAMILIARE esistente: porto qui le sue spese, così continui da dove eri. Si può ripetere senza creare doppioni.</p>
-      <button class="btn" style="margin-top:10px" data-act="importXlsx">Scegli il file .xlsx</button><div id="impReport"></div></section>
     <section class="card"><h2>Copia di sicurezza</h2><p>I dati stanno solo su questo telefono. Salva una copia ogni tanto; serve anche per portarli su un altro dispositivo.</p>
       <div class="two" style="margin-top:10px"><button class="btn" data-act="backup">Salva copia</button><button class="btn" data-act="restore">Ripristina</button></div>
       <p class="hint" style="margin-top:10px">${S.expenses.length} spese salvate.</p></section>`;
@@ -806,6 +808,8 @@ $('#inFiles').addEventListener('change', e => { addFiles(e.target.files); e.targ
 $('#inJson').addEventListener('change', e => { if (e.target.files[0]) restore(e.target.files[0]); e.target.value = ''; });
 $('#inXlsx').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (/\.xls$/i.test(f.name)) { toast('Salva il file come .xlsx e riprova'); return; }
+  if (!/\.xls[xm]$/i.test(f.name)) { toast('Scegli un file Excel (.xlsx)'); return; }
   const box = $('#impReport'); box.innerHTML = '<div class="report">Leggo il file…</div>';
   try {
     const r = await importaExcel(f);
@@ -816,6 +820,7 @@ $('#inXlsx').addEventListener('change', async e => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hidden) { queue = []; closeForm(); } });
 
 // ------------------------------------------------------------ avvio
+$('#inXlsx').removeAttribute('accept');
 render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
