@@ -397,7 +397,7 @@ function viewExcel() {
       <p class="hint" style="margin-top:10px">Il file caricato porta qui le sue spese, anche di anni diversi (2025, 2026, 2027…). Si può ripetere senza creare doppioni.</p>
       <div id="impReport"></div></section>
     <section class="card"><h2>Stesso bilancio su telefono e PC</h2>
-      ${syncOn() ? `<p>Collegato a <b>${esc(sync.repo)}</b>.</p><p id="syncStat" class="hint">${esc(syncStatusText())}</p><div class="two" style="margin-top:10px"><button class="btn primary" data-act="syncNow">Sincronizza ora</button><button class="btn" data-act="syncOff">Scollega</button></div>` : `<p>Collega un archivio privato su GitHub: spese e voci fisse restano uguali su telefono e computer, e l'Excel esce identico da entrambi.</p><button class="btn primary" style="margin-top:10px" data-act="syncSetup">Collega</button>`}</section>
+      ${syncOn() ? `<p>Collegato a <b>${esc(sync.repo)}</b>.</p><p id="syncStat" class="hint">${esc(syncStatusText())}</p><div class="two" style="margin-top:10px"><button class="btn primary" data-act="syncNow">Sincronizza ora</button><button class="btn" data-act="syncOff">Scollega</button></div><button class="btn" style="margin-top:10px;width:100%" data-act="syncInvite">Invita un altro telefono</button>` : `<p>Collega un archivio privato su GitHub: spese e voci fisse restano uguali su telefono e computer, e l'Excel esce identico da entrambi.</p><button class="btn primary" style="margin-top:10px" data-act="syncSetup">Collega</button>`}</section>
     <section class="card"><h2>Spese fisse e ricorrenti</h2><p>Compaiono ogni mese nell'Excel, fino al mese in corso, se non hai già inserito la stessa voce.</p>
       <div style="margin-top:6px">${S.recurring.length ? S.recurring.map(r => `<button class="rec" data-act="editRec" data-id="${r.id}"><span><b style="font-weight:650">${esc(r.voce)}</b><small>${r.persona} · ${TIPI[r.tipo]}${r.giorno ? ' · giorno ' + r.giorno : ''} · da ${r.da ? labelMese(r.da) : 'sempre'}${r.a ? ' a ' + labelMese(r.a) : ''}</small></span><b>${eur(r.importo)}</b></button>`).join('') : '<p class="hint">Nessuna voce.</p>'}</div>
       <button class="btn small" style="margin-top:10px" data-act="newRec">+ Aggiungi voce fissa</button></section>
@@ -791,6 +791,32 @@ function salvaNomi() {
   if (!nuovi.includes(S.settings.persona)) S.settings.persona = nuovi[0];
   save(); closeForm(); render(); toast(toccati.length ? `Nominativi aggiornati (${toccati.length} spese)` : 'Nominativi aggiornati');
 }
+// invito: un link che porta repository e chiave nel frammento (#...), che il browser non invia mai a nessun server
+let inviteData = null;
+const b64u = o => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = t => JSON.parse(atob(t.replace(/-/g, '+').replace(/_/g, '/')));
+const inviteURL = () => location.origin + location.pathname + '#collega=' + b64u({ r: sync.repo, t: sync.token });
+async function invitaTelefono() {
+  if (!syncOn()) return;
+  if (!confirm('Il link contiene la chiave di accesso ai vostri dati: invialo solo a persone di cui ti fidi. Continuare?')) return;
+  const url = inviteURL();
+  try { if (navigator.share) { await navigator.share({ title: 'Bilancio Casa', text: 'Apri il link per collegare questo telefono al bilancio di famiglia.', url }); return; } }
+  catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(url); toast('Link copiato: incollalo in un messaggio'); } catch (e) { prompt('Copia questo link e invialo:', url); }
+}
+function controllaInvito() {
+  const m = location.hash.match(/^#collega=(.+)$/); if (!m) return;
+  let d = null; try { d = unb64u(m[1]); } catch (e) { /* link non valido */ }
+  history.replaceState(null, '', location.pathname + location.search);   // il link con la chiave non resta nella cronologia
+  if (!d || !/^[\w.-]+\/[\w.-]+$/.test(d.r || '') || !d.t) { toast('Link di invito non valido'); return; }
+  if (syncOn() && sync.repo === d.r) return;
+  inviteData = d; sheet.hidden = false; form = null;
+  sheet.innerHTML = `<div class="scrim" data-act="close"></div><section class="panel" role="dialog" aria-modal="true" aria-label="Collegare questo telefono"><div class="grab"></div><div class="card" style="box-shadow:none">
+    <h2>Collegare questo telefono?</h2>
+    <p>Stai per collegarlo al bilancio condiviso <b>${esc(d.r)}</b>. Le spese di tutti i telefoni collegati saranno le stesse.</p>
+    ${S.expenses.length ? '<p class="hint">Le spese già presenti su questo telefono verranno unite a quelle condivise.</p>' : ''}
+    <div class="actions" style="margin-top:12px"><button class="btn" data-act="close">Annulla</button><button class="btn primary" data-act="inviteOk">Collega</button></div></div></section>`;
+}
 function openSync() {
   sheet.hidden = false; form = null;
   sheet.innerHTML = `<div class="scrim" data-act="close"></div><section class="panel" role="dialog" aria-modal="true" aria-label="Collega l'archivio"><div class="grab"></div><div class="card" style="box-shadow:none">
@@ -828,6 +854,8 @@ document.addEventListener('click', async ev => {
     case 'restore': $('#inJson').click(); break;
     case 'nomi': openNomi(); break;
     case 'nomiSave': salvaNomi(); break;
+    case 'syncInvite': invitaTelefono(); break;
+    case 'inviteOk': if (inviteData) { sync = { repo: inviteData.r, token: inviteData.t, last: 0, err: '' }; inviteData = null; saveSync(); closeForm(); render(); await sincronizza(true); render(); } break;
     case 'syncSetup': openSync(); break;
     case 'syncSave': { const repo = $('#sRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, ''), tok = $('#sTok').value.trim() || sync.token; if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !tok) { toast('Servono archivio (utente/nome) e token'); break; } sync = { repo, token: tok, last: 0, err: '' }; saveSync(); closeForm(); render(); await sincronizza(true); render(); break; }
     case 'syncNow': await sincronizza(true); break;
@@ -873,7 +901,8 @@ $('#inXlsx').removeAttribute('accept');
 render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
+controllaInvito();
 if (syncOn()) sincronizza();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syncOn() && Date.now() - lastSyncTry > 20000) sincronizza(); });
 window.addEventListener('online', () => { if (syncOn()) sincronizza(); });
-window.__app = { get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, persone, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };
+window.__app = { get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, persone, inviteURL, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };

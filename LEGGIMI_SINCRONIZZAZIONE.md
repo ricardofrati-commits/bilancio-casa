@@ -32,6 +32,20 @@ Premi **Collega e sincronizza**. Fatto: da ora le spese viaggiano da sole.
 Sul **PC** apri nel browser (Chrome o Edge) lo stesso indirizzo `https://TUOUTENTE.github.io/Bilancio-casa/`.
 Puoi anche installarla (icona di installazione nella barra dell'indirizzo).
 
+## Aggiungere altri telefoni (famiglia)
+1. Sul telefono già collegato: **Excel → Stesso bilancio su telefono e PC → Invita un altro telefono**.
+2. Scegli WhatsApp, Messaggi o email e invia il link.
+3. Sull'altro telefono apri il link (meglio con Safari su iPhone o Chrome su Android), poi **Collega**.
+   Per averla come app: *Aggiungi alla schermata Home*, poi apri la app installata dal link ricevuto.
+
+Il link contiene la chiave di accesso ai vostri dati: invialo solo a persone fidate.
+Per togliere l'accesso a tutti, su GitHub elimina il token (Developer settings → Fine-grained tokens)
+e creane uno nuovo da collegare ai telefoni che vuoi tenere.
+
+## Condividere solo l'Excel
+**Excel → Crea l'Excel**: finito il file compare **Condividi il file**. Scegli WhatsApp, email o Drive.
+(Se il tuo telefono non lo mostra, il file è stato scaricato e lo trovi nella cartella Download o File.)
+
 ## Regole d'oro
 - **Importa il tuo Excel una volta sola**, su un solo dispositivo: poi arriva sugli altri con la sincronizzazione.
   Se lo importi anche sull'altro, non crea doppioni.
