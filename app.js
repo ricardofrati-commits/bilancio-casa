@@ -615,13 +615,16 @@ async function esportaExcel() {
 // ------------------------------------------------------------ FASE 2: importa un file FAMILIARE esistente
 const cellVal = c => { let v = c.value; if (v && typeof v === 'object' && !(v instanceof Date)) { if ('result' in v) v = v.result; else if (v.richText) v = v.richText.map(t => t.text).join(''); else if ('text' in v) v = v.text; } return v; };
 const numVal = v => typeof v === 'number' ? v : (parseNum(v) || 0);
+const RIGHE_MIN = 500, RIGHE_MAX = 1000;   // righe di dati lette per ogni foglio mese: almeno 500, al massimo 1000
 async function importaExcel(file) {
   const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
   const righe = [], note = []; let scartate = 0; let prevYear = null, trovati = 0;
   for (const nome of MESI) {
     const ws = wb.worksheets.find(w => norm(w.name) === nome); if (!ws) continue;
     trovati++; const m = MESI.indexOf(nome) + 1, sheetRows = [];
-    for (let r = 4; r <= Math.min(ws.rowCount, 150); r++) [0, 1].forEach(b => {
+    const ultima = 3 + Math.max(RIGHE_MIN, Math.min(RIGHE_MAX, ws.rowCount));
+    if (ws.rowCount > 3 + RIGHE_MAX) note.push(`${nome}: il foglio ha più di ${RIGHE_MAX} righe, ho letto solo le prime ${RIGHE_MAX}.`);
+    for (let r = 4; r <= Math.min(ultima, ws.rowCount); r++) [0, 1].forEach(b => {
       const p = persone()[b], o = b * 10, voce = cellVal(ws.getCell(r, 4 + o)); if (!voce) return;
       const lab = String(voce).trim(); if (!lab || norm(lab) === 'TOTALE') return;
       const dv = cellVal(ws.getCell(r, 2 + o)), ex = numVal(cellVal(ws.getCell(r, 6 + o))), im = numVal(cellVal(ws.getCell(r, 8 + o))), fi = numVal(cellVal(ws.getCell(r, 9 + o)));
