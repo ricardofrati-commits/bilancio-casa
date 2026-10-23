@@ -92,17 +92,31 @@ function findAmount(text) {
   const all = amountsIn(text).filter(a => a > 0 && a < 10000);
   return all.length ? Math.max(...all) : null;
 }
+const MESI_TXT = { gen: 1, feb: 2, mar: 3, apr: 4, mag: 5, giu: 6, lug: 7, ago: 8, set: 9, ott: 10, nov: 11, dic: 12 };
+const KW_DATA = ['data', 'del ', 'ora', 'emesso', 'scontrino', 'documento', 'fiscale', 'cassa', 'ricevuta'];
+const KW_NODATA = ['scad', 'nato', 'nascita', 'valid', 'entro', 'garanzia', 'prelievo da', 'fino al', 'termine'];
 function findDate(text) {
-  const today = new Date(); const found = [];
-  for (const m of text.matchAll(DATE_ISO_RE)) found.push([m.index, +m[3], +m[2], +m[1]]);
-  for (const m of text.matchAll(DATE_RE)) { let y = +m[3]; if (y < 100) y += 2000; found.push([m.index, +m[1], +m[2], y]); }
-  found.sort((a, b) => a[0] - b[0]);
-  for (const [, d, mo, y] of found) {
-    const dt = new Date(y, mo - 1, d);
-    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) continue;
-    if (y >= 2000 && dt <= new Date(today.getTime() + 86400000)) return `${y}-${pad(mo)}-${pad(d)}`;
+  const today = new Date(), lim = new Date(today.getTime() + 86400000), found = [];
+  // correzioni tipiche dell'OCR: "12 / 10 / 2026", "12-1O-2026", "I2.10.26"
+  const t = text.replace(/(\d)\s*([\/\-.])\s*(?=\d)/g, '$1$2').replace(/(\d)[Oo](?=[\/\-.\d])/g, '$10').replace(/(?<=[\/\-.])[Oo](?=\d)/g, '0').replace(/(?<=\b)[Il|](?=\d[\/\-.]\d)/g, '1');
+  const push = (i, d, mo, y) => found.push([i, d, mo, y]);
+  for (const m of t.matchAll(DATE_ISO_RE)) push(m.index, +m[3], +m[2], +m[1]);
+  for (const m of t.matchAll(DATE_RE)) { let y = +m[3]; if (y < 100) y += 2000; push(m.index, +m[1], +m[2], y); }
+  for (const m of t.matchAll(/(?:^|\D)(\d{1,2})[\s\-\/.]*(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*[\s\-\/.,]*(\d{4}|\d{2})(?!\d)/gi)) {
+    let y = +m[3]; if (y < 100) y += 2000; push(m.index, +m[1], MESI_TXT[m[2].toLowerCase()], y);
   }
-  return null;
+  const low = t.toLowerCase(), cand = [];
+  for (const [i, d, mo, y] of found) {
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d || y < 2000 || dt > lim) continue;
+    const ctx = low.slice(Math.max(0, i - 24), i + 3).split('\n').pop();
+    let score = 0; if (KW_DATA.some(k => ctx.includes(k))) score += 2; if (KW_NODATA.some(k => ctx.includes(k))) score -= 3;
+    if ((today - dt) / 86400000 > 800) score -= 1;           // molto vecchia: poco probabile per uno scontrino appena fatto
+    cand.push([score, i, `${y}-${pad(mo)}-${pad(d)}`]);
+  }
+  if (!cand.length) return null;
+  cand.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  return cand[0][0] <= -3 ? null : cand[0][2];
 }
 const KW_VOCI = [
   ['FARMACIA', ['farmacia', 'parafarmacia']],
@@ -202,6 +216,14 @@ function closeForm() {
   sheet.hidden = true; sheet.innerHTML = ''; form = null;
   if (thumbURL) { URL.revokeObjectURL(thumbURL); thumbURL = null; }
 }
+function meseRefHTML(f) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.d || '')) return 'Mese di riferimento: scegli la data';
+  const ym = ymOf(f.d), giorni = Math.abs((new Date(f.d) - new Date(todayISO())) / 86400000);
+  let avv = '';
+  if (f.src && f.status === 'ok' && !f.dFound && !f.dirty.d) avv = '<b>Data non letta dallo scontrino: ho messo oggi.</b> ';
+  else if (giorni > 60 && !f.id) avv = '<b>Data lontana da oggi, controlla.</b> ';
+  return `${avv}Va nel foglio <strong>${MESI[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</strong>`;
+}
 function renderSheet() {
   if (!form) return;
   const f = form, isEdit = !!f.id;
@@ -221,6 +243,7 @@ function renderSheet() {
     <div class="stub">
       <div class="amount"><span>€</span><input id="fImp" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Importo in euro" value="${esc(f.importo)}"></div>
       <label class="row"><span>Data</span><input type="date" id="fData" value="${esc(f.d)}"></label>
+      <div class="meseref" id="meseRef">${meseRefHTML(f)}</div>
       ${persone().length > 1 ? `<div class="row"><span>Chi</span><div class="seg">${persone().map((p, i) => `<button type="button" class="p${i}" data-act="persona" data-p="${esc(p)}" aria-pressed="${f.persona === p}">${esc(p)}</button>`).join('')}</div></div>` : ''}
       <div class="row col"><span>Voce</span>
         <div class="chips">${voci.map(v => `<button type="button" class="chip" data-act="voce" data-v="${esc(v)}" aria-pressed="${f.voce === v}">${esc(v)}</button>`).join('')}</div>
@@ -256,7 +279,7 @@ async function processNext() {
     f.raw = text;
     const amt = findAmount(text), dt = findDate(text), v = suggestVoce(text);
     if (amt != null && !f.dirty.importo) f.importo = String(amt.toFixed(2)).replace('.', ',');
-    if (dt && !f.dirty.d) f.d = dt;
+    if (dt && !f.dirty.d) { f.d = dt; f.dFound = true; }
     if (v && !f.dirty.voce) { f.voce = v; if (!f.dirty.tipo) f.tipo = tipoDi(v); }
     if (!f.nota) f.nota = merchantOf(text);
     f.status = (amt != null || dt) ? 'ok' : 'fail';
@@ -284,7 +307,7 @@ function salvaForm() {
   else S.expenses.push(rec);
   S.tipoPerVoce[voce] = f.tipo; S.settings.persona = f.persona;
   if (!S.voci.includes(voce) && !(voce in DEFAULT_TIPO)) { /* voce nuova: resta nell'elenco suggerimenti */ }
-  save(); toast(f.id ? 'Modifica salvata' : 'Spesa salvata');
+  save(); toast((f.id ? 'Modifica salvata' : 'Spesa salvata') + ' · ' + MESI[+d.slice(5, 7) - 1] + ' ' + d.slice(0, 4));
   ui.mese = ymOf(d);
   if (f.src && queue.length) processNext(); else { closeForm(); render(); }
 }
@@ -872,7 +895,7 @@ document.addEventListener('click', async ev => {
 document.addEventListener('input', ev => {
   if (!form) return; const t = ev.target;
   if (t.id === 'fImp') { form.importo = t.value; form.dirty.importo = true; }
-  else if (t.id === 'fData') { form.d = t.value; form.dirty.d = true; }
+  else if (t.id === 'fData') { form.d = t.value; form.dirty.d = true; const mr = $('#meseRef'); if (mr) mr.innerHTML = meseRefHTML(form); }
   else if (t.id === 'fNota') { form.nota = t.value; }
   else if (t.id === 'fVoce') { form.voce = t.value.toUpperCase(); form.dirty.voce = true; }
 });

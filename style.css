@@ -155,3 +155,6 @@ details.raw pre{white-space:pre-wrap;background:var(--surface);border-radius:10p
 .report{background:var(--primary-soft);border-radius:12px;padding:10px 12px;margin-top:10px;font-size:.88rem;white-space:pre-line}
 
 .card .actions{position:static;background:none;padding:0;margin-top:14px}
+.meseref{font-size:13px;color:var(--muted,#5b6b73);padding:2px 2px 8px;line-height:1.35}
+.meseref b{color:#b4540a}
+.meseref strong{color:var(--primary,#0e7a4b)}
