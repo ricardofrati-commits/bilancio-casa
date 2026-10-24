@@ -417,13 +417,15 @@ function viewExcel() {
         <button class="btn primary big" data-act="export" id="btnExp">Crea l'Excel</button>
         <button class="btn big" data-act="importXlsx">Carica un Excel FAMILIARE</button>
         <button class="btn" data-act="share" id="btnShare" hidden>Condividi il file</button></div>
-      <p class="hint" style="margin-top:10px">Il file caricato porta qui le sue spese, anche di anni diversi (2025, 2026, 2027…). Si può ripetere senza creare doppioni.</p>
+      <p class="hint" style="margin-top:10px">Il file caricato porta qui le sue spese, anche di anni diversi (2026, 2027, 2028…). Si può ripetere senza creare doppioni.</p>
       <div id="impReport"></div></section>
     <section class="card"><h2>Stesso bilancio su telefono e PC</h2>
       ${syncOn() ? `<p>Collegato a <b>${esc(sync.repo)}</b>.</p><p id="syncStat" class="hint">${esc(syncStatusText())}</p><div class="two" style="margin-top:10px"><button class="btn primary" data-act="syncNow">Sincronizza ora</button><button class="btn" data-act="syncOff">Scollega</button></div><button class="btn" style="margin-top:10px;width:100%" data-act="syncInvite">Invita un altro telefono</button>` : `<p>Collega un archivio privato su GitHub: spese e voci fisse restano uguali su telefono e computer, e l'Excel esce identico da entrambi.</p><button class="btn primary" style="margin-top:10px" data-act="syncSetup">Collega</button>`}</section>
     <section class="card"><h2>Spese fisse e ricorrenti</h2><p>Compaiono ogni mese nell'Excel, fino al mese in corso, se non hai già inserito la stessa voce.</p>
       <div style="margin-top:6px">${S.recurring.length ? S.recurring.map(r => `<button class="rec" data-act="editRec" data-id="${r.id}"><span><b style="font-weight:650">${esc(r.voce)}</b><small>${r.persona} · ${TIPI[r.tipo]}${r.giorno ? ' · giorno ' + r.giorno : ''} · da ${r.da ? labelMese(r.da) : 'sempre'}${r.a ? ' a ' + labelMese(r.a) : ''}</small></span><b>${eur(r.importo)}</b></button>`).join('') : '<p class="hint">Nessuna voce.</p>'}</div>
       <button class="btn small" style="margin-top:10px" data-act="newRec">+ Aggiungi voce fissa</button></section>
+    <section class="card"><h2>Elimina un anno</h2><p>Per alleggerire il file: toglie tutte le spese di un anno (anche dagli altri telefoni collegati) e le spese fisse non ricompaiono per quell'anno. Prima salvo una copia di sicurezza.</p>
+      ${(() => { const ys = [...new Set(S.expenses.map(e => e.d.slice(0, 4)))].sort(); return ys.length ? `<div class="two" style="margin-top:10px"><select class="sel" id="selDelAnno">${ys.map(y => `<option>${y}</option>`).join('')}</select><button class="btn danger" data-act="delAnno">Elimina anno</button></div>` : '<p class="hint">Nessuna spesa salvata.</p>'; })()}</section>
     <section class="card"><h2>Copia di sicurezza</h2><p>I dati stanno solo su questo telefono. Salva una copia ogni tanto; serve anche per portarli su un altro dispositivo.</p>
       <div class="two" style="margin-top:10px"><button class="btn" data-act="backup">Salva copia</button><button class="btn" data-act="restore">Ripristina</button></div>
       <p class="hint" style="margin-top:10px">${S.expenses.length} spese salvate.</p></section>`;
@@ -685,6 +687,22 @@ async function importaExcel(file) {
 }
 
 // ------------------------------------------------------------ copia di sicurezza
+function eliminaAnno(y) {
+  const n = S.expenses.filter(e => e.d.startsWith(y + '-')).length;
+  if (!n) { toast('Nessuna spesa nel ' + y); return; }
+  if (!confirm(`Eliminare tutto il ${y}?\n${n} spese verranno cancellate (anche sugli altri dispositivi collegati).\nScarico prima una copia di sicurezza.`)) return;
+  backup();
+  S.del = S.del || {}; const t = Date.now();
+  S.expenses.filter(e => e.d.startsWith(y + '-')).forEach(e => { S.del[e.id] = t; });
+  S.expenses = S.expenses.filter(e => !e.d.startsWith(y + '-'));
+  // le spese fisse non devono rigenerare l'anno eliminato
+  const primo = `${+y + 1}-01`, restano = S.expenses.some(e => e.d < y + '-01');
+  if (!restano) S.recurring.forEach(r => { if (!r.da || r.da < primo) { r.da = primo; r.u = Date.now(); } });
+  S.recurring.filter(r => r.a && r.a < primo).forEach(r => { S.del[r.id] = t; });
+  S.recurring = S.recurring.filter(r => !r.a || r.a >= primo);
+  if (ui.mese && ui.mese.startsWith(y)) ui.mese = '';
+  save(); render(); toast(`${y} eliminato (${n} spese)`);
+}
 function backup() {
   const blob = new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bilancio-casa-${todayISO()}.json`; document.body.appendChild(a); a.click();
@@ -877,6 +895,7 @@ document.addEventListener('click', async ev => {
     case 'share': if (ultimoFile) { try { await navigator.share({ files: [ultimoFile], title: ultimoFile.name }); } catch (e) { /* annullato */ } } break;
     case 'importXlsx': $('#inXlsx').click(); break;
     case 'backup': backup(); break;
+    case 'delAnno': eliminaAnno($('#selDelAnno').value); break;
     case 'restore': $('#inJson').click(); break;
     case 'nomi': openNomi(); break;
     case 'nomiSave': salvaNomi(); break;
@@ -931,4 +950,4 @@ controllaInvito();
 if (syncOn()) sincronizza();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syncOn() && Date.now() - lastSyncTry > 20000) sincronizza(); });
 window.addEventListener('online', () => { if (syncOn()) sincronizza(); });
-window.__app = { get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, persone, inviteURL, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };
+window.__app = { eliminaAnno, get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, persone, inviteURL, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };
