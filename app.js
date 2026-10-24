@@ -98,8 +98,11 @@ const KW_NODATA = ['scad', 'nato', 'nascita', 'valid', 'entro', 'garanzia', 'pre
 function findDate(text) {
   const today = new Date(), lim = new Date(today.getTime() + 86400000), found = [];
   // correzioni tipiche dell'OCR: "12 / 10 / 2026", "12-1O-2026", "I2.10.26"
-  const t = text.replace(/(\d)\s*([\/\-.])\s*(?=\d)/g, '$1$2').replace(/(\d)[Oo](?=[\/\-.\d])/g, '$10').replace(/(?<=[\/\-.])[Oo](?=\d)/g, '0').replace(/(?<=\b)[Il|](?=\d[\/\-.]\d)/g, '1');
+  const FIX = { O: '0', o: '0', I: '1', l: '1', '|': '1', S: '5', B: '8' };
+  const t = text.replace(/(?<![\dA-Za-z])([\dOoIl|SB]{1,2})[ \t]?[\/\-.,:;][ \t]?([\dOoIl|SB]{1,2})[ \t]?[\/\-.,:;][ \t]?([\dOoIl|SB]{2,4})(?![\dA-Za-z])/g,
+    (m, a, b, c) => /\d/.test(a + b + c) ? [a, b, c].map(x => x.replace(/[OoIl|SB]/g, ch => FIX[ch])).join('/') : m);
   const push = (i, d, mo, y) => found.push([i, d, mo, y]);
+  for (const m of t.matchAll(/(?<!\d)(\d{1,2})[ ]+(\d{1,2})[ ]+(20\d{2})(?!\d)/g)) push(m.index, +m[1], +m[2], +m[3]);
   for (const m of t.matchAll(DATE_ISO_RE)) push(m.index, +m[3], +m[2], +m[1]);
   for (const m of t.matchAll(DATE_RE)) { let y = +m[3]; if (y < 100) y += 2000; push(m.index, +m[1], +m[2], y); }
   for (const m of t.matchAll(/(?:^|\D)(\d{1,2})[\s\-\/.]*(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*[\s\-\/.,]*(\d{4}|\d{2})(?!\d)/gi)) {
@@ -111,7 +114,7 @@ function findDate(text) {
     if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d || y < 2000 || dt > lim) continue;
     const ctx = low.slice(Math.max(0, i - 24), i + 3).split('\n').pop();
     let score = 0; if (KW_DATA.some(k => ctx.includes(k))) score += 2; if (KW_NODATA.some(k => ctx.includes(k))) score -= 3;
-    if ((today - dt) / 86400000 > 800) score -= 1;           // molto vecchia: poco probabile per uno scontrino appena fatto
+    if ((today - dt) / 86400000 > 1100) score -= 3; else if ((today - dt) / 86400000 > 800) score -= 1;   // oltre 3 anni: quasi certamente un errore di lettura           // molto vecchia: poco probabile per uno scontrino appena fatto
     cand.push([score, i, `${y}-${pad(mo)}-${pad(d)}`]);
   }
   if (!cand.length) return null;
@@ -181,6 +184,45 @@ function pdfLines(items) {
   items.forEach(it => { const y = Math.round(it.transform[5] / 3); (rows.get(y) || rows.set(y, []).get(y)).push(it); });
   return [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, r]) => r.sort((a, b) => a.transform[4] - b.transform[4]).map(i => i.str).join(' ')).join('\n');
 }
+const sansAcc = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+function lev(a, b) { const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; }
+// nominativo: cerca nello scontrino il nome di una delle persone (anche con 1 errore di lettura)
+function findPersona(text, nomi) {
+  const parole = sansAcc(text).replace(/[^A-Z]+/g, ' ').split(' ').filter(w => w.length >= 3);
+  const hit = nomi.filter(p => sansAcc(p).split(/[^A-Z]+/).filter(w => w.length >= 3).some(tok => parole.some(w => w === tok || (tok.length >= 5 && Math.abs(w.length - tok.length) <= 1 && lev(w, tok) <= 1))));
+  return hit.length === 1 ? hit[0] : null;
+}
+function binarizza(c) {
+  const w = c.width, h = c.height, x = c.getContext('2d', { willReadFrequently: true }), id = x.getImageData(0, 0, w, h), px = id.data;
+  const I = new Float64Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) { let row = 0; for (let xx = 0; xx < w; xx++) { row += px[(y * w + xx) * 4]; I[(y + 1) * (w + 1) + xx + 1] = I[y * (w + 1) + xx + 1] + row; } }
+  const r = Math.max(12, Math.round(Math.min(w, h) / 24));
+  for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) {
+    const x0 = Math.max(0, xx - r), x1 = Math.min(w, xx + r + 1), y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+    const m = (I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+    const i = (y * w + xx) * 4, v = px[i] < m * 0.88 ? 0 : 255; px[i] = px[i + 1] = px[i + 2] = v;
+  }
+  x.putImageData(id, 0, 0); return c;
+}
+function ritaglia(c, y0, y1) {
+  const h = Math.round(c.height * (y1 - y0)), o = document.createElement('canvas'); o.width = c.width; o.height = h;
+  o.getContext('2d').drawImage(c, 0, Math.round(c.height * y0), c.width, h, 0, 0, c.width, h); return o;
+}
+async function ocrPsm(canvas, psm) {
+  const w = await getWorker(); await w.setParameters({ tessedit_pageseg_mode: String(psm) });
+  try { const { data } = await w.recognize(canvas); return data.text || ''; }
+  finally { await w.setParameters({ tessedit_pageseg_mode: '6' }); }
+}
+// legge in più passaggi finché trova importo e data (i passaggi in più partono solo se servono)
+async function ocrSmart(canvas) {
+  const ok = t => findAmount(t) != null && findDate(t);
+  let text = await ocrCanvas(canvas); if (ok(text)) return text;
+  const copia = () => { const k = document.createElement('canvas'); k.width = canvas.width; k.height = canvas.height; k.getContext('2d').drawImage(canvas, 0, 0); return k; };
+  text += '\n' + await ocrPsm(binarizza(copia()), 4); if (ok(text)) return text;
+  for (const [a, b] of [[0, 0.4], [0.6, 1]]) { text += '\n' + await ocrPsm(ritaglia(canvas, a, b), 6); if (ok(text)) break; }
+  return text;
+}
 async function readFileText(file) {
   if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name)) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = absURL('vendor/pdf.worker.min.js');
@@ -193,12 +235,12 @@ async function readFileText(file) {
       const pg = await pdf.getPage(p), vp = pg.getViewport({ scale: 2.5 });
       const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
       await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-      text += await ocrCanvas(prepCanvas(c, c.width, c.height)) + '\n';
+      text += await ocrSmart(prepCanvas(c, c.width, c.height)) + '\n';
     }
     return text;
   }
   const bmp = await loadBitmap(file);
-  return ocrCanvas(prepCanvas(bmp, bmp.width || bmp.naturalWidth, bmp.height || bmp.naturalHeight));
+  return ocrSmart(prepCanvas(bmp, bmp.width || bmp.naturalWidth, bmp.height || bmp.naturalHeight));
 }
 async function sha1(file) {
   try { const b = await crypto.subtle.digest('SHA-1', await file.arrayBuffer()); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
@@ -234,7 +276,7 @@ function renderSheet() {
     const thumb = f.src.isPdf ? '<div class="pdf">PDF</div>' : `<img alt="Anteprima scontrino" src="${esc(f.src.url)}">`;
     const warn = f.status === 'fail' || f.dup;
     const msg = f.status === 'run' ? 'Leggo lo scontrino…' : f.status === 'ok' ? 'Letto. Controlla importo e data.' : f.status === 'fail' ? 'Lettura non riuscita: compila a mano.' : '';
-    ocrHTML = `<div class="ocr ${warn ? 'warn' : ''}">${thumb}<div class="tx"><strong id="ocrMsg">${msg}</strong>${f.dup ? '<div>Questo file risulta già salvato.</div>' : ''}
+    ocrHTML = `<div class="ocr ${warn ? 'warn' : ''}">${thumb}<div class="tx"><strong id="ocrMsg">${msg}</strong>${f.letto ? `<div class="hint">${[['Importo', f.letto.imp], ['Data', f.letto.data], ...(persone().length > 1 ? [['Nominativo', f.letto.nome]] : [])].map(([n, v]) => v ? `✓ ${n}` : `✗ ${n}: da inserire a mano`).join(' · ')}</div>` : ''}${f.dup ? '<div>Questo file risulta già salvato.</div>' : ''}
       ${queue.length ? `<div class="hint">Altri ${queue.length} in coda</div>` : ''}<div class="pb"><i id="ocrBar" style="width:${f.status === 'run' ? '4%' : '100%'}"></i></div></div></div>`;
   }
   sheet.innerHTML = `<div class="scrim" data-act="close"></div>
@@ -281,8 +323,10 @@ async function processNext() {
     if (amt != null && !f.dirty.importo) f.importo = String(amt.toFixed(2)).replace('.', ',');
     if (dt && !f.dirty.d) { f.d = dt; f.dFound = true; }
     if (v && !f.dirty.voce) { f.voce = v; if (!f.dirty.tipo) f.tipo = tipoDi(v); }
+    const pn = findPersona(text, persone()); if (pn && !f.dirty.persona) { f.persona = pn; f.pFound = true; }
     if (!f.nota) f.nota = merchantOf(text);
-    f.status = (amt != null || dt) ? 'ok' : 'fail';
+    f.letto = { imp: amt != null, data: !!dt, nome: !!pn };
+    f.status = (amt != null || dt || pn) ? 'ok' : 'fail';
   } catch (e) {
     console.error(e); f.status = 'fail';
   }
@@ -950,4 +994,4 @@ controllaInvito();
 if (syncOn()) sincronizza();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syncOn() && Date.now() - lastSyncTry > 20000) sincronizza(); });
 window.addEventListener('online', () => { if (syncOn()) sincronizza(); });
-window.__app = { eliminaAnno, get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, persone, inviteURL, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };
+window.__app = { findPersona, eliminaAnno, get S() { return S; }, set S(v) { S = v; }, creaWorkbook, importaExcel, sincronizza, persone, inviteURL, mergeAll, get sync() { return sync; }, findAmount, findDate, suggestVoce, render, ui };
